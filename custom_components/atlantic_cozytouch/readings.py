@@ -23,9 +23,9 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
     24: CapabilitySpec("Uruchomienia sprężarki", cumulative=True, diagnostic=True),
     27: CapabilitySpec("Czas pracy sprężarki", unit="s", category="duration", cumulative=True, diagnostic=True),
-    44: CapabilitySpec("Energia CO", unit="kWh", category="energy"),
-    45: CapabilitySpec("Energia CWU", unit="kWh", category="energy"),
-    46: CapabilitySpec("Energia łączna", unit="kWh", category="energy"),
+    44: CapabilitySpec("Zużycie energii elektrycznej CO", unit="kWh", category="energy", cumulative=True),
+    45: CapabilitySpec("Zużycie energii elektrycznej CWU", unit="kWh", category="energy", cumulative=True),
+    46: CapabilitySpec("Łączne zużycie energii elektrycznej", unit="kWh", category="energy", cumulative=True),
     51: CapabilitySpec("Sprężarka pracuje", kind="binary", diagnostic=True),
     64: CapabilitySpec("Grzałka CWU pracuje", kind="binary", diagnostic=True),
     72: CapabilitySpec("Modulacja sprężarki", unit="%", diagnostic=True),
@@ -69,6 +69,10 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
         return None
     if capability_id == 119 and number <= -327.68:
         return None
+    # Atlantic publishes these electrical energy counters in Wh, not kWh.
+    # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".
+    if capability_id in (44, 45, 46):
+        return number / 1000.0
     return number
 
 
