@@ -20,7 +20,21 @@ def load_handler():
         func,
     ], type_ignores=[])
     ast.fix_missing_locations(module)
-    globals_ = {"DOMAIN": "atlantic_cozytouch", "CAPABILITIES": {24: True, 109: True}}
+    # Execute the real redaction helper rather than mocking it.
+    import importlib.util
+    import sys
+    import types
+    pkg = types.ModuleType("privacy_test_pkg")
+    pkg.__path__ = [str(ROOT / "custom_components" / "atlantic_cozytouch")]
+    sys.modules[pkg.__name__] = pkg
+    for name in ("readings", "discovery"):
+        fq = f"{pkg.__name__}.{name}"
+        spec = importlib.util.spec_from_file_location(fq, Path(pkg.__path__[0]) / f"{name}.py")
+        mod = importlib.util.module_from_spec(spec)
+        sys.modules[fq] = mod
+        spec.loader.exec_module(mod)
+    from privacy_test_pkg.discovery import redacted_inventory
+    globals_ = {"DOMAIN": "atlantic_cozytouch", "redacted_inventory": redacted_inventory}
     exec(compile(module, str(DIAGNOSTICS), "exec"), globals_)
     return globals_["async_get_config_entry_diagnostics"]
 
@@ -48,6 +62,7 @@ class TestDiagnosticsPrivacy(unittest.IsolatedAsyncioTestCase):
             "reported_count": 3,
             "known_capability_ids": [24, 109],
             "unmapped_capability_ids": [555],
+            "compressor_capability_ids": [24],
         }])
         self.assertTrue(report["last_poll_ok"])
         dumped = json.dumps(report, ensure_ascii=False)
