@@ -46,7 +46,8 @@ class TestEnergyPreview(unittest.TestCase):
     def test_invalid_capability_masks_cannot_crash(self):
         for value in ("bad", None, True, -1, float("nan"), 10**1000):
             dev = dict(self.device)
-            dev["values"] = dict(self.device["values"], **{164: value})
+            dev["values"] = dict(self.device["values"])
+            dev["values"][164] = value
             self.assertIsNone(module.candidate_summary(dev, 57)["pomiar_elektryczny_deklarowany_przez_id164"])
 
     def test_cop_readiness_fails_closed_if_no_thermal_records(self):
