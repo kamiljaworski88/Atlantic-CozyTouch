@@ -2,11 +2,15 @@
 
 from __future__ import annotations
 
+from datetime import UTC, datetime, timedelta
+
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
+from homeassistant.helpers.event import async_track_time_interval
 from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
-from .const import DOMAIN
+from .const import DOMAIN, POLL_SECONDS
+from .energy_validation import freshness_status
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import new_capabilities, inventory_summary
 from .readings import CAPABILITIES
@@ -16,6 +20,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     seen: set[tuple[str, int]] = set()
     seen_derived: set[tuple[str, str]] = set()
+    seen_energy: set[tuple[str, int]] = set()
 
     def add_new() -> None:
         discovered = new_capabilities(coordinator.data or [], kind="sensor", seen=seen)
@@ -34,6 +39,19 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 if identity not in seen_derived:
                     seen_derived.add(identity)
                     entities.append(AtlanticCompressorDerivedSensor(coordinator, device, metric))
+        for device in coordinator.data or []:
+            for cap_id in (57, 59):
+                if cap_id not in device.get("reported_capability_ids", []):
+                    continue
+                key = (device["id"], cap_id)
+                if key not in seen_energy:
+                    seen_energy.add(key)
+                    entities.append(AtlanticRawEnergyDeltaSensor(coordinator, device, cap_id))
+            if 60 in device.get("reported_capability_ids", []):
+                key = (device["id"], 60)
+                if key not in seen_energy:
+                    seen_energy.add(key)
+                    entities.append(AtlanticEnergyValueStatusSensor(coordinator, device))
         if entities:
             async_add_entities(entities)
 
@@ -41,6 +59,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     async_add_entities([
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
+        AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
     ])
     add_new()
     unsub = coordinator.async_add_listener(add_new)
@@ -171,3 +190,109 @@ class AtlanticCompressorDerivedSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         monitor = self.coordinator.atlantic_compressor
         return monitor.metrics.get(self._device_id, {}).get(self._metric)
+
+
+class AtlanticRawEnergyDeltaSensor(CoordinatorEntity, SensorEntity):
+    """Unit-free difference between valid, continuous polls; NO HA statistics."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:delta"
+
+    def __init__(self, coordinator, device: dict, cap_id: int) -> None:
+        super().__init__(coordinator)
+        self._device_id = device["id"]
+        self._cap_id = cap_id
+        self._attr_name = f"Przyrost surowego wskazania ID {cap_id}"
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_energy_delta_{cap_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=device["name"], manufacturer="Atlantic",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.last_update_success:
+            return None
+        return self.coordinator.atlantic_energy.statuses.get(self._device_id, {}).get(
+            self._cap_id, {}
+        ).get("delta_raw")
+
+    @property
+    def extra_state_attributes(self):
+        item = self.coordinator.atlantic_energy.statuses.get(self._device_id, {}).get(
+            self._cap_id, {}
+        )
+        return {
+            "comparison_status": item.get("comparison", "not_reported"),
+            "value_status": item.get("value_status", "not_reported"),
+            "units_verified": False,
+        }
+
+
+class AtlanticEnergyValueStatusSensor(CoordinatorEntity, SensorEntity):
+    """Reason why ID 60 reads unknown, without exposing raw vendor text."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Diagnostyka wskazania ID 60"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clipboard-text-search-outline"
+
+    def __init__(self, coordinator, device: dict) -> None:
+        super().__init__(coordinator)
+        self._device_id = device["id"]
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_energy_status_60"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=device["name"], manufacturer="Atlantic",
+        )
+
+    @property
+    def native_value(self):
+        if not self.coordinator.last_update_success:
+            return "ostatni_odczyt_nieudany"
+        return self.coordinator.atlantic_energy.statuses.get(self._device_id, {}).get(
+            60, {}
+        ).get("value_status", "niezgloszony")
+
+
+class AtlanticTelemetryFreshnessSensor(CoordinatorEntity, SensorEntity):
+    """Freshness status recalculated once per minute, also during API outages."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Aktualność telemetrii Atlantic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:cloud-clock-outline"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_telemetry_freshness"
+
+    @property
+    def available(self) -> bool:
+        return True
+
+    async def async_added_to_hass(self) -> None:
+        await super().async_added_to_hass()
+        self.async_on_remove(async_track_time_interval(
+            self.hass, self._refresh_state, timedelta(minutes=1)
+        ))
+
+    def _refresh_state(self, _now: datetime) -> None:
+        self.async_write_ha_state()
+
+    @property
+    def native_value(self):
+        return freshness_status(
+            getattr(self.coordinator, "atlantic_last_success_at", None),
+            self.coordinator.last_update_success,
+            datetime.now(UTC),
+            POLL_SECONDS,
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "expected_poll_interval_seconds": POLL_SECONDS,
+            "max_fresh_age_seconds": int(POLL_SECONDS * 2.5),
+        }

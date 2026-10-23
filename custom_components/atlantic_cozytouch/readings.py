@@ -76,6 +76,24 @@ READ_ONLY_ENUMS: dict[int, dict[str, str]] = {
 }
 
 
+def energy_value_status(value: object) -> str:
+    """Classify an energy field without retaining or disclosing its raw text."""
+    if value is None:
+        return "missing"
+    if isinstance(value, bool):
+        return "invalid_format"
+    raw = str(value).strip()
+    if raw.lower() in ("", "---", "none", "null", "unknown", "unavailable"):
+        return "empty"
+    try:
+        number = float(raw.replace(",", "."))
+    except (TypeError, ValueError):
+        return "invalid_format"
+    if not (0 <= number < 1_000_000_000_000):
+        return "negative" if number < 0 else "out_of_range"
+    return "valid"
+
+
 def normalize_value(capability_id: int, value: object) -> float | str | bool | None:
     """Do not invent a reading when the API sends an unavailable value."""
     spec = CAPABILITIES.get(capability_id)
@@ -148,6 +166,7 @@ def extract_devices(payload: object) -> list[dict]:
 
         values: dict[int, float | str | bool | None] = {}
         reported_ids: set[int] = set()
+        energy_status: dict[int, str] = {}
         raw_capabilities = item.get("capabilities", [])
         if isinstance(raw_capabilities, list):
             if len(raw_capabilities) > MAX_CAPABILITIES_PER_DEVICE:
@@ -162,6 +181,8 @@ def extract_devices(payload: object) -> list[dict]:
                 if not 0 <= cap_id <= MAX_CAPABILITY_ID:
                     continue
                 reported_ids.add(cap_id)
+                if cap_id in (57, 59, 60):
+                    energy_status[cap_id] = energy_value_status(cap.get("value"))
                 if cap_id in CAPABILITIES:
                     values[cap_id] = normalize_value(cap_id, cap.get("value"))
 
@@ -171,6 +192,7 @@ def extract_devices(payload: object) -> list[dict]:
                     "id": safe_id,
                     "name": str(item.get("name") or "Atlantic")[:100],
                     "values": values,
+                    "energy_status": energy_status,
                     # IDs only; no unknown measurements are retained/exported.
                     "reported_capability_ids": sorted(reported_ids),
                 }
