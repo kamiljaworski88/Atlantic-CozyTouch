@@ -23,7 +23,12 @@ def parse_setup_id(payload: object) -> int | None:
 
 
 def _nonnegative_number(value: object) -> bool:
-    return type(value) in (int, float) and isfinite(value) and value >= 0
+    if type(value) not in (int, float):
+        return False
+    try:
+        return isfinite(value) and value >= 0
+    except (OverflowError, ValueError):
+        return False
 
 
 def summarize_consumptions(payload: object) -> dict:
