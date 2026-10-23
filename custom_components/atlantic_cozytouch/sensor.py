@@ -12,6 +12,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 from .const import DOMAIN, POLL_SECONDS
 from .energy_validation import freshness_status
 from .consumption_probe import energy_capabilities_summary
+from .energy_preview import ENERGY_CANDIDATES, candidate_kwh, candidate_summary, cop_readiness
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import new_capabilities, inventory_summary
 from .readings import CAPABILITIES
@@ -22,6 +23,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     seen: set[tuple[str, int]] = set()
     seen_derived: set[tuple[str, str]] = set()
     seen_energy: set[tuple[str, int]] = set()
+    seen_previews: set[tuple[str, int]] = set()
 
     def add_new() -> None:
         discovered = new_capabilities(coordinator.data or [], kind="sensor", seen=seen)
@@ -53,6 +55,14 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 if key not in seen_energy:
                     seen_energy.add(key)
                     entities.append(AtlanticEnergyValueStatusSensor(coordinator, device))
+        # Tentative electrical energy preview: new diagnostic entities only.
+        # No Energy device_class/state_class until comparison with the controller.
+        for device in coordinator.data or []:
+            for cap_id in ENERGY_CANDIDATES:
+                key = (device["id"], cap_id)
+                if cap_id in device.get("reported_capability_ids", []) and key not in seen_previews:
+                    seen_previews.add(key)
+                    entities.append(AtlanticEnergyPreviewSensor(coordinator, device, cap_id))
         if entities:
             async_add_entities(entities)
 
@@ -62,6 +72,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
+        AtlanticCopReadinessSensor(coordinator, entry.entry_id),
     ])
     add_new()
     unsub = coordinator.async_add_listener(add_new)
@@ -325,4 +336,72 @@ class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
             "deklarowane_pomiary_id164": energy_capabilities_summary(
                 self.coordinator.data or []
             ),
+        }
+
+
+class AtlanticEnergyPreviewSensor(CoordinatorEntity, SensorEntity):
+    """Hypothetical kWh only. Never contributes to Home Assistant statistics."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_icon = "mdi:flash-outline"
+
+    def __init__(self, coordinator, device: dict, cap_id: int) -> None:
+        super().__init__(coordinator)
+        self._device_id = device["id"]
+        self._cap_id = cap_id
+        self._attr_name = (
+            "Hipoteza energii CO · ID 57" if cap_id == 57
+            else "Hipoteza energii CWU · ID 59"
+        )
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_preview_kwh_{cap_id}"
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=device["name"], manufacturer="Atlantic",
+        )
+        # Deliberately no energy device class or statistics state class.
+
+    @property
+    def native_value(self):
+        if not self.coordinator.last_update_success:
+            return None
+        for device in self.coordinator.data or []:
+            if device["id"] == self._device_id:
+                return candidate_kwh(device, self._cap_id)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        for device in self.coordinator.data or []:
+            if device["id"] == self._device_id:
+                return candidate_summary(device, self._cap_id)
+        return {"przypisanie_i_skala_zweryfikowane": False}
+
+
+class AtlanticCopReadinessSensor(CoordinatorEntity, SensorEntity):
+    """Status of COP evidence; deliberately never reports a numeric COP."""
+
+    _attr_has_entity_name = True
+    _attr_name = "COP Atlantic · gotowość danych"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:gauge"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_cop_readiness"
+
+    @property
+    def native_value(self):
+        return cop_readiness(getattr(self.coordinator, "atlantic_consumptions", None))
+
+    @property
+    def extra_state_attributes(self):
+        s = getattr(self.coordinator, "atlantic_consumptions", {})
+        return {
+            "rekordy_produkcji_ciepla": s.get("okresy_z_energia_wyprodukowana", 0),
+            "rekordy_dodatniej_produkcji": s.get("okresy_z_dodatnia_produkcja", 0),
+            "deklarowane_pomiary_id164": energy_capabilities_summary(self.coordinator.data or []),
+            "cop_wyliczony": False,
+            "powod": "Brak zweryfikowanych pomiarów ciepła i energii elektrycznej w tym samym okresie",
         }

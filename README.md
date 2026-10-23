@@ -2,16 +2,25 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.4.3 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.0 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
-- Warstwa sieciowa dopuszcza jedynie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz `GET https://apis.groupe-atlantic.com/magellan/cozytouch/setupviewv2` (odczyt).
+- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz dwa odczyty `GET`: `/magellan/cozytouch/setupviewv2` i `/magellan/setups/{setupId}/consumptions?periodicity=daily` (historia, ograniczona do instalacji zalogowanego konta).
 - Bez serwerów pośredniczących autora integracji, analityki i eksportu danych. **Integracja wymaga chmury producenta**, a nie działa lokalnie/offline.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.0 — końcowy audyt energii (bez fikcyjnego COP)
+
+- Nowe **diagnostyczne** odczyty `Hipoteza energii CO · ID 57` i `Hipoteza energii CWU · ID 59`: wstępna konwersja Wh / 1000, niezweryfikowane przypisanie i okres.
+- Nowy sensor `COP Atlantic · gotowość danych` — status, a nie wymyślona wartość sprawności.
+- Sensory hipotezy **nie mają** `state_class` ani `device_class=energy` i nie wchodzą do statystyk Energy Dashboard.
+- [Dashboard Mushroom](dashboards/atlantic_energy_diagnostic_0_5_0.yaml) oraz [raport pięciu etapów i warunki odbioru](docs/ENERGY_COP_FINALIZATION_0_5_0.md).
+- Dotychczasowe odczyty historii: 2 serie, 4 rekordy energii elektrycznej, **0 rekordów wyprodukowanego ciepła**; ID164=1298 deklaruje funkcje, nie pomiary. COP liczymy dopiero po potwierdzeniu ciepła i prądu w tym samym okresie.
+- Integracja pozostaje tylko do odczytu.
 
 ## v0.1.1 — jakość danych i diagnostyka
 
@@ -37,13 +46,13 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
 
-## v0.4.3 — audyt kategorii i okresów energii (PR do akceptacji)
+## v0.4.3 — audyt kategorii i okresów energii (historia zmian)
 
 - Rozszerza **istniejący sensor** `Historia energii Atlantic · test API` o `serie_szczegoly`: anonimowe indeksy, kody `category/type/unit`, tryby i profile, liczbę dni, zakres dat UTC oraz informację o brakujących i dodatnich wartościach produkcji.
 - `type=1` / `unit=1` interpretujemy w diagnostyce jako energię elektryczną w kWh **tylko według schematu potwierdzonego na innym urządzeniu Atlantic**. **Nie przypisujemy automatycznie dwóch serii do CO i CWU**.
 - Wszystkie stare nazwy encji i atrybuty zostają, nie tworzymy nowych liczników w panelu Energia i nie liczymy COP; bez nowego ruchu HTTP ani sterowania pompą.
 - Raport JSON z diagnostyki ma format 5. Szczegóły są ograniczone do 12 serii, bez surowego zużycia, kwot, identyfikatorów konta/urządzenia ani tokenów.
-- [Audyt API, ograniczenia i procedura odbioru](docs/ENERGY_API_AUDIT_0_4_3.md). **Nie mergować do main bez osobnej akceptacji.**
+- [Audyt API, ograniczenia i procedura odbioru](docs/ENERGY_API_AUDIT_0_4_3.md). Zachowane mapowanie diagnostyczne, bez automatycznej klasyfikacji CO/CWU.
 
 ## v0.4.2 — ostrożny test endpointu historii energii
 
@@ -99,18 +108,18 @@ Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla A
 ## Instalacja (dopiero po przeglądzie PR)
 
 1. Zrób kopię zapasową Home Assistant (kontrola importu wykonana na 2026.10.2).
-2. **Wymaganie HACS:** standardowy HACS obsługuje tylko publiczne repozytoria GitHub. Dopóki `Atlantic-CozyTouch` jest prywatne, instalacja w HACS jako niestandardowe repozytorium nie będzie dostępna. Nie zmieniaj widoczności bez świadomej decyzji.
-3. Po udostępnieniu repozytorium jako publicznego: *HACS → ⋮ → Niestandardowe repozytoria → URL → Integracja → Dodaj*, a następnie zainstaluj **Atlantic CozyTouch Read-Only** z gałęzi `main`. Release nie jest wymagany, gdy HACS wykorzystuje gałąź domyślną.
+2. **HACS:** niestandardowe repozytorium musi być publicznie dostępne. Sprawdź aktualną widoczność repozytorium w GitHub przed dodaniem go w HACS; nie trzeba jej zmieniać dla wersji ręcznej.
+3. W HACS: *⋮ → Niestandardowe repozytoria → URL repozytorium → Integracja → Dodaj*, a następnie zainstaluj **Atlantic CozyTouch Read-Only** z `main` i ponownie uruchom Home Assistant.
 4. Uruchom ponownie HA, dodaj integrację w *Ustawienia → Urządzenia i usługi* i podaj dane konta Atlantic **tylko w lokalnym formularzu HA**.
-5. Zweryfikuj dostępne encje i brak usług sterujących. Kod pozostaje **testową wersją 0.1.0**, dopóki nie zostanie sprawdzony na rzeczywistym urządzeniu.
+5. Zweryfikuj dostępne encje i brak usług sterujących. Kod pozostaje **testową wersją 0.5.0**, dopóki nie zostanie sprawdzony na rzeczywistym urządzeniu.
 
 **Alternatywa zachowująca prywatność repozytorium:** pobierz archiwum ZIP gałęzi `main` ze swojego GitHub i skopiuj folder `custom_components/atlantic_cozytouch` do `/config/custom_components/` na HA, po czym uruchom go ponownie. To instalacja ręczna (nie przez HACS).
 
-## Zakres i ograniczenia v0.1.0
+## Zakres i ograniczenia (aktualny stan)
 
 - Odczyt co 180 sekund, z obsługą błędów autoryzacji, HTTP 429 i problemów sieciowych.
 - Brak dostępu LAN/Modbus; całkowicie zależna od chmury Atlantic.
-- Brak osobnego endpointu historycznego zużycia; podstawowe liczniki energii pochodzą z bieżącego odczytu urządzenia.
+- Istnieje dodatkowy endpoint historii energii, lecz dotychczas nie zwrócił pomiarów produkcji ciepła. ID 57/59 w kWh pozostają diagnostycznymi hipotezami.
 - Nie gwarantujemy, że interfejs producenta pozostanie niezmienny ani że każde pole będzie dostępne.
 - Brak automatycznych aktualizacji po stronie pompy, wprowadzania zmian czy odkrywania endpointów.
 
