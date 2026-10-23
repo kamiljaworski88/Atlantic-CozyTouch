@@ -103,7 +103,7 @@ class TestNoWriteSurface(unittest.TestCase):
         self.assertIn('TOKEN_PATH = "/users/token"', const)
         self.assertIn('READ_PATH = "/magellan/cozytouch/setupviewv2"', const)
         client = API.read_text(encoding="utf-8")
-        self.assertIn("allow_redirects=False", client)
+        self.assertIn('options["allow_redirects"] = False', client)
         self.assertNotIn("ssl=False", client)
         self.assertNotIn("verify_ssl=False", client)
 
