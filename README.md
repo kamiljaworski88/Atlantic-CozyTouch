@@ -37,6 +37,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
 
+## v0.5.0 — dzienne zużycie energii elektrycznej CO i CWU (PR do akceptacji)
+
+- Cztery nowe sensory: energia elektryczna **CO/CWU dzisiaj (UTC)** i **CO/CWU wczoraj (UTC)**; pobierają `category=1/2, type=1, unit=1` z istniejącego Magellan `consumptions?periodicity=daily`.
+- Wykorzystują **jedynie dane liczbowe kWh** z weryfikacją kodów kategorii, typu i jednostki oraz jednego dnia UTC; wartości dla kilku taryf danego dnia są sumowane bez dublowania.
+- Bieżący dzień: `state_class=total`, `last_reset` o północy UTC; wczoraj: historyczna wartość bez `state_class`. Atrybut bieżącego sensora zawiera do 7 historycznych dni (nie uzupełnia archiwalnych statystyk Recorder).
+- Mapowanie kategorii 1=CO i 2=CWU jest potwierdzone niezależnie na porównywalnej pompie Atlantic, ale **wymaga jeszcze porównania wartości z wyświetlaczem Twojej Extensa**. Niewiarygodne odczyty mają `unknown/unavailable`, nigdy sztuczne 0.
+- Bez zmian istniejących encji, nowych endpointów, przesyłania surowych odpowiedzi, serwerów pośrednich i sterowania pompą; **COP pozostaje niewyliczany**.
+- [Bezpieczeństwo, interpretacja odczytów i procedura odbioru](docs/DAILY_ENERGY_0_5_0.md).
+
 ## v0.4.3 — audyt kategorii i okresów energii (PR do akceptacji)
 
 - Rozszerza **istniejący sensor** `Historia energii Atlantic · test API` o `serie_szczegoly`: anonimowe indeksy, kody `category/type/unit`, tryby i profile, liczbę dni, zakres dat UTC oraz informację o brakujących i dodatnich wartościach produkcji.
