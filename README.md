@@ -35,13 +35,13 @@ Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla A
 
 ## Instalacja (dopiero po przeglądzie PR)
 
-1. Zrób kopię zapasową Home Assistant (testowana docelowa wersja: 2026.10.x).
-2. Zainstaluj jako **niestandardowe repozytorium integracji HACS**: `https://github.com/kamiljaworski88/Atlantic-CozyTouch` (prywatne repo może wymagać dodatkowego dostępu HACS).
-3. Po udostępnieniu wydania na `main`, dodaj integrację **Atlantic CozyTouch Read-Only** przez *Ustawienia → Urządzenia i usługi*.
-4. Podaj dane do konta Atlantic Cozytouch (nie podawaj ich w issues, PR-ach ani czacie).
-5. Sprawdź encje oraz brak usług sterujących.
+1. Zrób kopię zapasową Home Assistant (kontrola importu wykonana na 2026.10.2).
+2. **Wymaganie HACS:** standardowy HACS obsługuje tylko publiczne repozytoria GitHub. Dopóki `Atlantic-CozyTouch` jest prywatne, instalacja w HACS jako niestandardowe repozytorium nie będzie dostępna. Nie zmieniaj widoczności bez świadomej decyzji.
+3. Po udostępnieniu repozytorium jako publicznego: *HACS → ⋮ → Niestandardowe repozytoria → URL → Integracja → Dodaj*, a następnie zainstaluj **Atlantic CozyTouch Read-Only** z gałęzi `main`. Release nie jest wymagany, gdy HACS wykorzystuje gałąź domyślną.
+4. Uruchom ponownie HA, dodaj integrację w *Ustawienia → Urządzenia i usługi* i podaj dane konta Atlantic **tylko w lokalnym formularzu HA**.
+5. Zweryfikuj dostępne encje i brak usług sterujących. Kod pozostaje **testową wersją 0.1.0**, dopóki nie zostanie sprawdzony na rzeczywistym urządzeniu.
 
-Alternatywnie po zatwierdzeniu kodu skopiuj `custom_components/atlantic_cozytouch` do katalogu `config/custom_components/` i uruchom ponownie HA.
+**Alternatywa zachowująca prywatność repozytorium:** pobierz archiwum ZIP gałęzi `main` ze swojego GitHub i skopiuj folder `custom_components/atlantic_cozytouch` do `/config/custom_components/` na HA, po czym uruchom go ponownie. To instalacja ręczna (nie przez HACS).
 
 ## Zakres i ograniczenia v0.1.0
 
