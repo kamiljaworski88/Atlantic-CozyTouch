@@ -103,7 +103,7 @@ def summarize_consumptions(payload: object) -> dict:
         consumed += taken
         produced += produced_count
         positive_production += positive_count
-        details.append({
+        if len(details) >= 12:\n            continue\n        details.append({
             "indeks": index,
             "kategoria_kod": category,
             "typ_kod": kind,
@@ -120,8 +120,8 @@ def summarize_consumptions(payload: object) -> dict:
             "data_od_utc": min(days) if days else None,
             "data_do_utc": max(days) if days else None,
             "nieprawidlowe_daty": invalid_dates,
-            "tryby_kody": sorted(modes),
-            "profile_kody": sorted(profiles),
+            "tryby_kody": sorted(modes)[:12],\n            "tryby_pominiete": max(0, len(modes) - 12),
+            "profile_kody": sorted(profiles)[:12],\n            "profile_pominiete": max(0, len(profiles) - 12),
             "okresy_z_energia_pobrana": taken,
             "okresy_z_energia_wyprodukowana": produced_count,
             "okresy_z_dodatnia_produkcja": positive_count,
@@ -137,7 +137,7 @@ def summarize_consumptions(payload: object) -> dict:
         "mozliwy_pomiar_produkcji": produced > 0,
         "cop_zweryfikowany": False,
         "okresy_z_dodatnia_produkcja": positive_production,
-        "serie_szczegoly": details,
+        "serie_szczegoly": details,\n        "serie_pominiete_w_szczegolach": max(0, len(payload) - len(details)),
     }
 
 
