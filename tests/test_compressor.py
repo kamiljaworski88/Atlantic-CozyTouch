@@ -65,6 +65,27 @@ class TestCompressor(unittest.TestCase):
         self.assertIsNone(self.m.metrics["fake"]["runtime_hours"])
         self.assertIsNone(self.m.metrics["fake"]["average_runtime_min_per_start"])
 
+    def test_failed_poll_invalidates_next_interval_deltas(self):
+        self.m.ingest(device(), self.t)
+        self.m.invalidate()
+        self.m.ingest(device(22, 32500), self.t + timedelta(seconds=180))
+        self.assertIsNone(self.m.metrics["fake"]["starts_delta_last_poll"])
+        self.assertIsNone(self.m.metrics["fake"]["runtime_delta_seconds_last_poll"])
+        self.m.ingest(device(23, 32600), self.t + timedelta(seconds=360))
+        self.assertEqual(self.m.metrics["fake"]["starts_delta_last_poll"], 1)
+        self.assertEqual(self.m.metrics["fake"]["runtime_delta_seconds_last_poll"], 100)
+
+    def test_one_device_reset_does_not_create_false_deltas(self):
+        two = [{"id": "a", "values": {24: 21, 27: 32400}},
+               {"id": "b", "values": {24: 50, 27: 50000}}]
+        self.m.ingest(two, self.t)
+        next_snapshot = [{"id": "a", "values": {24: 1, 27: 100}},
+                         {"id": "b", "values": {24: 51, 27: 50080}}]
+        self.m.ingest(next_snapshot, self.t + timedelta(seconds=180))
+        self.assertIsNone(self.m.metrics["a"]["starts_delta_last_poll"])
+        self.assertIsNone(self.m.metrics["a"]["runtime_delta_seconds_last_poll"])
+        self.assertEqual(self.m.metrics["b"]["starts_delta_last_poll"], 1)
+
     def test_naive_timestamp_rejected(self):
         with self.assertRaises(ValueError):
             self.m.ingest(device(), datetime(2026, 10, 23))
