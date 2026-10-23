@@ -58,6 +58,17 @@ class CompressorMonitor:
         self._previous: dict[str, tuple[datetime, int | None, float | None]] = {}
         self.metrics: dict[str, dict[str, float | int | None]] = {}
 
+    def invalidate(self) -> None:
+        """Invalidate interval comparisons after a failed Atlantic poll.
+
+        The cumulative totals will be read again on the next successful poll.
+        Do not infer a continuous cycle across a failed API request.
+        """
+        self._previous.clear()
+        for metrics in self.metrics.values():
+            metrics["starts_delta_last_poll"] = None
+            metrics["runtime_delta_seconds_last_poll"] = None
+
     def ingest(self, devices: list[dict], observed_at: datetime) -> None:
         if observed_at.tzinfo is None:
             raise ValueError("observed_at must be timezone-aware")
