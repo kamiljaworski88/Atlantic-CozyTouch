@@ -65,7 +65,7 @@ class TestDiagnosticsPrivacy(unittest.IsolatedAsyncioTestCase):
             "compressor_capability_ids": [24],
         }])
         self.assertTrue(report["last_poll_ok"])
-        self.assertEqual(report["diagnostics_format"], 4)
+        self.assertEqual(report["diagnostics_format"], 5)
         self.assertEqual(report["energy_validation"], [])
         self.assertEqual(report["consumption_probe"], {"state": "nie_sprawdzono"})
         dumped = json.dumps(report, ensure_ascii=False)

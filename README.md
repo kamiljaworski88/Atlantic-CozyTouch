@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.4.1 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.4.3 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -36,6 +36,14 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Pierwszy odczyt po restarcie HA, długa luka, reset licznika i niewiarygodny przyrost → wartość `unknown`. Żadnych sztucznych startów.
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
+
+## v0.4.3 — audyt kategorii i okresów energii (PR do akceptacji)
+
+- Rozszerza **istniejący sensor** `Historia energii Atlantic · test API` o `serie_szczegoly`: anonimowe indeksy, kody `category/type/unit`, tryby i profile, liczbę dni, zakres dat UTC oraz informację o brakujących i dodatnich wartościach produkcji.
+- `type=1` / `unit=1` interpretujemy w diagnostyce jako energię elektryczną w kWh **tylko według schematu potwierdzonego na innym urządzeniu Atlantic**. **Nie przypisujemy automatycznie dwóch serii do CO i CWU**.
+- Wszystkie stare nazwy encji i atrybuty zostają, nie tworzymy nowych liczników w panelu Energia i nie liczymy COP; bez nowego ruchu HTTP ani sterowania pompą.
+- Raport JSON z diagnostyki ma format 5. Szczegóły są ograniczone do 12 serii, bez surowego zużycia, kwot, identyfikatorów konta/urządzenia ani tokenów.
+- [Audyt API, ograniczenia i procedura odbioru](docs/ENERGY_API_AUDIT_0_4_3.md). **Nie mergować do main bez osobnej akceptacji.**
 
 ## v0.4.2 — ostrożny test endpointu historii energii
 
