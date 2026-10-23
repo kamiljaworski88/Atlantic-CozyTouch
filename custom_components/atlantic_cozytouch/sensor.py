@@ -360,7 +360,7 @@ class AtlanticEnergyPreviewSensor(CoordinatorEntity, SensorEntity):
             identifiers={(DOMAIN, self._device_id)},
             name=device["name"], manufacturer="Atlantic",
         )
-        # Intentionally NO SensorDeviceClass.ENERGY or SensorStateClass.
+        # Deliberately no energy device class or statistics state class.
 
     @property
     def native_value(self):
