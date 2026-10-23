@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, datetime, timedelta
+from datetime import UTC, datetime, time, timedelta
 
 from homeassistant.components.sensor import SensorDeviceClass, SensorEntity, SensorStateClass
 from homeassistant.helpers.event import async_track_time_interval
@@ -62,6 +62,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
+        AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 1, 0),
+        AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 2, 0),
+        AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 1, 1),
+        AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 2, 1),
     ])
     add_new()
     unsub = coordinator.async_add_listener(add_new)
@@ -326,3 +330,87 @@ class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
                 self.coordinator.data or []
             ),
         }
+
+
+class AtlanticDailyElectricitySensor(CoordinatorEntity, SensorEntity):
+    """Daily cloud electricity for exactly one category and one UTC day.
+
+    These are account-level daily buckets, not lifetime device meters.
+    We never mix two different categories or inject historical statistics.
+    """
+
+    _attr_has_entity_name = True
+    _attr_device_class = SensorDeviceClass.ENERGY
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_suggested_display_precision = 3
+
+    def __init__(self, coordinator, entry_id: str, category: int, offset: int) -> None:
+        super().__init__(coordinator)
+        if category not in (1, 2) or offset not in (0, 1):
+            raise ValueError("Unsupported Atlantic daily electricity category/day")
+        self._category = category
+        self._offset = offset
+        role = "CO" if category == 1 else "CWU"
+        day_name = "dzisiaj" if offset == 0 else "wczoraj"
+        suffix = "today" if offset == 0 else "yesterday"
+        role_id = "co" if category == 1 else "cwu"
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_energy_daily_{role_id}_{suffix}"
+        self._attr_name = f"Energia elektryczna {role} · {day_name} (UTC)"
+        self._attr_icon = "mdi:radiator" if category == 1 else "mdi:water-boiler"
+        if offset == 0:
+            # Cloud may revise the current UTC day's amount up or down.
+            # TOTAL with last_reset at UTC midnight prevents false negative
+            # consumption when the day rolls over.
+            self._attr_state_class = SensorStateClass.TOTAL
+
+    @property
+    def _day(self) -> str:
+        return (datetime.now(UTC).date() - timedelta(days=self._offset)).isoformat()
+
+    @property
+    def _values(self) -> dict[str, float]:
+        return getattr(self.coordinator, "atlantic_daily_energy", {}).get(
+            self._category, {}
+        )
+
+    @property
+    def available(self) -> bool:
+        return (
+            super().available
+            and getattr(self.coordinator, "atlantic_consumptions", {}).get("state")
+            == "dostepna"
+            and self._day in self._values
+        )
+
+    @property
+    def native_value(self):
+        return self._values.get(self._day) if self.available else None
+
+    @property
+    def last_reset(self):
+        # For TOTAL today's sensor only, never for a historical snapshot.
+        if self._offset != 0 or not self.available:
+            return None
+        return datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
+
+    @property
+    def extra_state_attributes(self):
+        today = datetime.now(UTC).date().isoformat()
+        history = [
+            {"dzien_utc": day, "kwh": kwh}
+            for day, kwh in sorted(self._values.items())
+            if day <= today
+        ][-7:]
+        result = {
+            "dzien_utc": self._day,
+            "kategoria_api": self._category,
+            "typ_api": 1,
+            "jednostka_api": 1,
+            "okres": "dzien_utc",
+            "mapowanie": "co_cwu_potwierdzone_na_podobnej_pompie_do_walidacji_lokalnej",
+        }
+        # Seven days of local history are a display aid, NOT historical
+        # recorder/statistics backfill. Do not use it for an Energy sum.
+        if self._offset == 0:
+            result["historia_ostatnich_7_dni_utc"] = history
+        return result
