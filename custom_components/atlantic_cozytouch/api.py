@@ -1,7 +1,7 @@
-"""Atlantic HTTP client with an explicit two-operation allowlist.
+"""Atlantic HTTP client with a strict, read-only operation allowlist.
 
 No operation can mutate the device: POST is permitted only for OAuth login,
-and GET only for reading the vendor's setup snapshot.
+and GET only for reading setup snapshots and consumption history.
 """
 
 from __future__ import annotations
@@ -262,6 +262,6 @@ class AtlanticReadOnlyClient:
                 self.consumption_summary = summarize_consumptions(payload)
         except AtlanticRateLimited:
             self.consumption_summary = {"state": "limit_zapytan"}
-        except (aiohttp.ClientError, TimeoutError, ValueError):
+        except (aiohttp.ClientError, TimeoutError, ValueError, TypeError, OverflowError, AtlanticError):
             self.consumption_summary = {"state": "blad_polaczenia"}
 
