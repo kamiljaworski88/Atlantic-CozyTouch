@@ -1,0 +1,48 @@
+name: Read-only integration checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  static-and-offline-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile Python
+        run: python -m compileall -q custom_components tests
+      - name: Read-only and mapping tests
+        run: python -m unittest discover -s tests -v
+
+  ha-import-smoke:
+    name: Home Assistant 2026.10.2 official container import
+    runs-on: ubuntu-latest
+    timeout-minutes: 12
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Import modules using official Home Assistant container
+        run: |
+          docker run --rm -i --entrypoint python3 \
+            -v "$PWD":/work -w /work \
+            ghcr.io/home-assistant/home-assistant:2026.10.2 \
+            - <<'PY'
+          import importlib
+          for path in (
+              "custom_components.atlantic_cozytouch",
+              "custom_components.atlantic_cozytouch.api",
+              "custom_components.atlantic_cozytouch.config_flow",
+              "custom_components.atlantic_cozytouch.sensor",
+              "custom_components.atlantic_cozytouch.binary_sensor",
+          ):
+              importlib.import_module(path)
+              print("OK", path)
+          PY

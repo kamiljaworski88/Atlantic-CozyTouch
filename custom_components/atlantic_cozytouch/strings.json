@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Atlantic CozyTouch — read-only",
+        "description": "The integration reads device status through Atlantic cloud. It cannot change settings.",
+        "data": {
+          "username": "Atlantic account email",
+          "password": "Atlantic account password"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Atlantic rejected the credentials.",
+      "cannot_connect": "Unable to read data from Atlantic cloud."
+    },
+    "abort": {
+      "already_configured": "This Atlantic account is already configured."
+    }
+  }
+}
