@@ -120,6 +120,36 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(result["values"][112], 5.5)
         self.assertNotIn("DO_NOT_EXPORT_SERIAL", str(result))
 
+    def test_energy_value_status_reasons_without_raw_text(self):
+        classify = module.energy_value_status
+        self.assertEqual(classify(None), "missing")
+        self.assertEqual(classify("   "), "empty")
+        self.assertEqual(classify("---"), "empty")
+        self.assertEqual(classify("unknown"), "empty")
+        self.assertEqual(classify("user@example.invalid SECRET"), "invalid_format")
+        self.assertEqual(classify("nan"), "out_of_range")
+        self.assertEqual(classify("inf"), "out_of_range")
+        self.assertEqual(classify("-10"), "negative")
+        self.assertEqual(classify(True), "invalid_format")
+        self.assertEqual(classify("11581.0"), "valid")
+        self.assertEqual(classify("6,571"), "valid")
+
+    def test_parser_discards_invalid_id60_contents(self):
+        payload = [{"devices": [{
+            "deviceId": "device",
+            "capabilities": [
+                {"capabilityId": 57, "value": "11581"},
+                {"capabilityId": 59, "value": "6571"},
+                {"capabilityId": 60, "value": "SECRET_PRIVATE_TEXT"},
+            ],
+        }]}]
+        result = module.extract_devices(payload)[0]
+        self.assertEqual(result["energy_status"], {
+            57: "valid", 59: "valid", 60: "invalid_format"
+        })
+        self.assertIsNone(result["values"][60])
+        self.assertNotIn("SECRET_PRIVATE_TEXT", str(result))
+
     def test_not_available_handled(self):
         self.assertIsNone(module.normalize_value(24, "---"))
         self.assertIsNone(module.normalize_value(51, "unrecognized"))
