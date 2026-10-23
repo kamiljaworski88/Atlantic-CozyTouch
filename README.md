@@ -23,7 +23,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 27 | czas pracy sprężarki (wg API: sekundy) |
 | 51 | stan sprężarki |
 | 72 | modulacja sprężarki (%) |
-| 44, 45, 46 | energia/zużycie CO, CWU i łączne (jeśli raportowane) |
+| 44, 45, 46 | liczniki elektrycznego zużycia CO, CWU i łącznego, automatycznie przeliczone z Wh na kWh |
 | 100 | ciśnienie wody |
 | 109 | temperatura wody obiegu |
 | 111 | temperatura CWU |
@@ -31,7 +31,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 119 | temperatura zewnętrzna |
 | 6, 150, 180 | diagnostyczne kody błędów |
 
-Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są obliczane bez wiarygodnych pomiarów.**
+Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są obliczane bez wiarygodnych pomiarów. Wartości zużycia elektrycznego 44–46 mają w API jednostkę Wh i są prezentowane w kWh.**
 
 ## Instalacja (dopiero po przeglądzie PR)
 
