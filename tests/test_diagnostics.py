@@ -65,9 +65,52 @@ class TestDiagnosticsPrivacy(unittest.IsolatedAsyncioTestCase):
             "compressor_capability_ids": [24],
         }])
         self.assertTrue(report["last_poll_ok"])
+        self.assertEqual(report["diagnostics_format"], 3)
+        self.assertEqual(report["energy_validation"], [])
         dumped = json.dumps(report, ensure_ascii=False)
         for secret in ("SECRET_", "PRIVATE_", "user@example", "33.3", "gatewaySerial", "password"):
             self.assertNotIn(secret, dumped)
+
+    async def test_report_reveals_only_energy_status_not_energy_values(self):
+        import importlib.util
+        from datetime import datetime, timezone
+
+        spec = importlib.util.spec_from_file_location(
+            "energy_privacy_diagnostics_test",
+            ROOT / "custom_components" / "atlantic_cozytouch" / "energy_validation.py"
+        )
+        mod = importlib.util.module_from_spec(spec)
+        import sys
+        sys.modules[spec.name] = mod
+        spec.loader.exec_module(mod)
+
+        readings = [{
+            "id": "PRIVATE_DEVICE_ID",
+            "name": "PRIVATE_DEVICE_NAME",
+            "reported_capability_ids": [57, 59, 60],
+            "values": {57: 11581, 59: 6571, 60: None},
+            "energy_status": {57: "valid", 59: "valid", 60: "empty"},
+        }]
+        monitor = mod.EnergyValidationMonitor()
+        monitor.ingest(readings, datetime(2026, 10, 23, tzinfo=timezone.utc))
+        coordinator = SimpleNamespace(
+            data=readings, last_update_success=True, atlantic_energy=monitor
+        )
+        entry = SimpleNamespace(
+            entry_id="PRIVATE_ENTRY", data={"password": "PRIVATE_PASSWORD"}
+        )
+        hass = SimpleNamespace(data={"atlantic_cozytouch": {entry.entry_id: coordinator}})
+        report = await load_handler()(hass, entry)
+        self.assertEqual(report["energy_validation"], [{
+            "index": 1,
+            "energy_ids": {
+                "57": {"value_status": "valid", "comparison": "first_sample"},
+                "59": {"value_status": "valid", "comparison": "first_sample"},
+                "60": {"value_status": "empty", "comparison": "not_applicable"},
+            },
+        }])
+        for private_value in ("PRIVATE_", "11581", "6571", "password"):
+            self.assertNotIn(private_value, json.dumps(report, ensure_ascii=False))
 
     async def test_no_device_snapshot_retained_after_failure(self):
         handler = load_handler()

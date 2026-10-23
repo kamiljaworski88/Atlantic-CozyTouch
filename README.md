@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.4.0 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.4.1 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -36,6 +36,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Pierwszy odczyt po restarcie HA, długa luka, reset licznika i niewiarygodny przyrost → wartość `unknown`. Żadnych sztucznych startów.
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
+
+## v0.4.1 — walidacja odczytów energii i świeżości danych
+
+- Nowy status ID `60`: rozróżnia brak wartości, pustą odpowiedź, niepoprawny format, wartość ujemną lub poza zakresem. Nie eksportuje surowego tekstu API.
+- Dwa pomocnicze sensory **przyrostu surowego wskazania** `57` i `59`; nie mają jednostek energii ani HA `state_class`. Po pierwszym odczycie, nieudanym polling, luce, zmianie urządzenia lub spadku wartości zwracają `unknown` zamiast fałszywej statystyki.
+- Sensor **Aktualność telemetrii Atlantic** analizuje czas ostatniego sukcesu i status ostatniego polling; lokalne odświeżenie co 60 sekund nie generuje dodatkowego ruchu do Atlantic.
+- Pobierana diagnostyka HA ma format `3` i zawiera wyłącznie anonimowe kody stanu walidacji, nie liczby energii ani dane urządzeń.
+- [Szablon raportu walidacyjnego](docs/ENERGY_VALIDATION_REPORT.md) i [propozycja bloku dashboardu](docs/DASHBOARD_0_4_1.md).
+- Nadal **nie ma** potwierdzonego skalowania ID `57/59/60`, sensorów kWh, automatycznych kosztów ani COP.
 
 ## v0.4.0 — telemetria energii i trybów (walidacja na urządzeniu)
 
