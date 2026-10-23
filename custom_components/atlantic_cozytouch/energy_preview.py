@@ -36,12 +36,14 @@ def candidate_summary(device: dict, cap_id: int) -> dict:
     """Only non-sensitive flags and an explicit verification disclaimer."""
     role, flag = ENERGY_CANDIDATES[cap_id]
     mask = device.get("values", {}).get(164)
-    supported = (
-        bool(int(mask) & flag)
-        if type(mask) in (int, float) and isfinite(mask)
-        and float(mask).is_integer() and 0 <= mask < 2**31
-        else None
-    )
+    # The mask can arrive malformed: never let this diagnostic crash polling.
+    supported = None
+    try:
+        if type(mask) in (int, float) and 0 <= mask < 2**31:
+            if isfinite(mask) and float(mask).is_integer():
+                supported = bool(int(mask) & flag)
+    except (OverflowError, ValueError):
+        pass
     return {
         "hipoteza_obieg": role,
         "zrodlo_capability_id": cap_id,
