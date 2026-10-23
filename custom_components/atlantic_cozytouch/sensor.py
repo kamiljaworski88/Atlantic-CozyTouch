@@ -11,6 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, POLL_SECONDS
 from .energy_validation import freshness_status
+from .consumption_probe import energy_capabilities_summary
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import new_capabilities, inventory_summary
 from .readings import CAPABILITIES
@@ -60,6 +61,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
+        AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
     ])
     add_new()
     unsub = coordinator.async_add_listener(add_new)
@@ -295,4 +297,32 @@ class AtlanticTelemetryFreshnessSensor(CoordinatorEntity, SensorEntity):
         return {
             "expected_poll_interval_seconds": POLL_SECONDS,
             "max_fresh_age_seconds": int(POLL_SECONDS * 2.5),
+        }
+
+
+class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
+    """Safe API endpoint status: no raw energy values, tokens, or setup ID."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Historia energii Atlantic · test API"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:chart-timeline-variant"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_consumption_probe"
+
+    @property
+    def native_value(self):
+        status = getattr(self.coordinator, "atlantic_consumptions", {})
+        return status.get("state", "nie_sprawdzono")
+
+    @property
+    def extra_state_attributes(self):
+        status = getattr(self.coordinator, "atlantic_consumptions", {})
+        return {
+            **status,
+            "deklarowane_pomiary_id164": energy_capabilities_summary(
+                self.coordinator.data or []
+            ),
         }
