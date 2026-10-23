@@ -79,6 +79,11 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
     # This is an invalid sentinel, not a physical water/room temperature.
     if spec.category == "temperature" and (number <= -200 or number > 180):
         return None
+    # Cumulative counters cannot be negative. Modulation is a percentage.
+    if capability_id in (24, 25, 26, 27, 28, 29) and number < 0:
+        return None
+    if capability_id == 72 and not 0 <= number <= 100:
+        return None
     # Atlantic publishes these electrical energy counters in Wh, not kWh.
     # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".
     if capability_id in (44, 45, 46):
