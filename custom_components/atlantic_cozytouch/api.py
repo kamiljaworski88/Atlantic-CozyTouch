@@ -20,6 +20,7 @@ from .const import (
     TOKEN_PATH,
 )
 from .readings import extract_devices
+from .consumption_probe import parse_setup_id, summarize_consumptions
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -57,6 +58,10 @@ class AtlanticReadOnlyClient:
         self._token: str | None = None
         self._token_expiry = datetime.min.replace(tzinfo=timezone.utc)
         self._cooldown_until = datetime.min.replace(tzinfo=timezone.utc)
+        self._setup_id: int | None = None
+        self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
+        self._consumption_disabled = False
+        self.consumption_summary: dict = {"state": "nie_sprawdzono"}
 
     def _request(self, method: str, url: str, **kwargs):
         """Reject all methods/routes except vendor login and snapshot read.
@@ -64,7 +69,14 @@ class AtlanticReadOnlyClient:
         The caller cannot override TLS verification, configure a proxy or
         enable HTTP redirects via request parameters.
         """
-        if (method, url) not in _ALLOWED_HTTP_OPERATIONS:
+        # A third GET is allowed ONLY for this account's validated numeric
+        # setup id, never for caller-supplied URLs or arbitrary Magellan paths.
+        consumption_allowed = (
+            method == "GET"
+            and self._setup_id is not None
+            and url == self._consumption_url()
+        )
+        if (method, url) not in _ALLOWED_HTTP_OPERATIONS and not consumption_allowed:
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -76,6 +88,14 @@ class AtlanticReadOnlyClient:
         if method == "POST":
             return self._session.post(url, **options)
         return self._session.get(url, **options)
+
+    def _consumption_url(self) -> str:
+        if self._setup_id is None:
+            raise AtlanticError("No valid setup identifier")
+        return (
+            API_ORIGIN + f"/magellan/setups/{self._setup_id}/consumptions"
+            "?periodicity=daily"
+        )
 
     def _ensure_not_throttled(self) -> None:
         if datetime.now(timezone.utc) < self._cooldown_until:
@@ -187,6 +207,61 @@ class AtlanticReadOnlyClient:
             payload = await self._get_setup()
 
         try:
-            return extract_devices(payload)
+            devices = extract_devices(payload)
         except ValueError:
             raise AtlanticError("Unexpected Atlantic response schema") from None
+        setup_id = parse_setup_id(payload)
+        if setup_id != self._setup_id:
+            self._setup_id = setup_id
+            self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
+            self._consumption_disabled = False
+            self.consumption_summary = {"state": "nie_sprawdzono"}
+        return devices
+
+    async def async_probe_consumptions(self) -> None:
+        """Optional 15-minute diagnostic GET; never affects normal telemetry.
+
+        Only safe shape information is retained; no series, dates, amounts,
+        account IDs or login secrets appear in diagnostics.
+        """
+        now = datetime.now(timezone.utc)
+        if self._consumption_disabled or now < self._consumption_due:
+            return
+        self._consumption_due = now + timedelta(minutes=15)
+        if self._setup_id is None:
+            self.consumption_summary = {"state": "brak_id_instalacji"}
+            return
+        try:
+            self._ensure_not_throttled()
+            async with self._request(
+                "GET", self._consumption_url(),
+                headers={
+                    "Authorization": "Bearer " + (self._token or ""),
+                    "Accept": "application/json",
+                },
+            ) as response:
+                if response.status == 429:
+                    self._note_rate_limited(response)
+                    self.consumption_summary = {"state": "limit_zapytan"}
+                    return
+                if response.status in (403, 404):
+                    self._consumption_disabled = True
+                    self.consumption_summary = {
+                        "state": "odmowa_dostepu" if response.status == 403
+                        else "brak_endpointu"
+                    }
+                    return
+                if response.status == 401:
+                    self._token = None  # A normal setup poll will reauthenticate.
+                    self.consumption_summary = {"state": "brak_autoryzacji"}
+                    return
+                if response.status != 200:
+                    self.consumption_summary = {"state": "blad_http"}
+                    return
+                payload = await response.json()
+                self.consumption_summary = summarize_consumptions(payload)
+        except AtlanticRateLimited:
+            self.consumption_summary = {"state": "limit_zapytan"}
+        except (aiohttp.ClientError, TimeoutError, ValueError):
+            self.consumption_summary = {"state": "blad_polaczenia"}
+
