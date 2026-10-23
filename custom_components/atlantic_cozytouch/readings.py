@@ -12,11 +12,12 @@ from dataclasses import dataclass
 @dataclass(frozen=True, slots=True)
 class CapabilitySpec:
     title: str
-    kind: str = "number"  # number, text, binary
+    kind: str = "number"  # number, text, binary, enum
     unit: str | None = None
     category: str | None = None  # temperature, pressure, energy, duration
     cumulative: bool = False
     diagnostic: bool = False
+    publish_statistics: bool = True  # disabled for unverified vendor raw readings
 
 
 MAX_DEVICES_PER_ACCOUNT = 128
@@ -34,6 +35,18 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     44: CapabilitySpec("Zużycie energii elektrycznej CO", unit="kWh", category="energy", cumulative=True),
     45: CapabilitySpec("Zużycie energii elektrycznej CWU", unit="kWh", category="energy", cumulative=True),
     46: CapabilitySpec("Łączne zużycie energii elektrycznej", unit="kWh", category="energy", cumulative=True),
+    # 57/59/60 appear in the Atlantic vendor mapping as ENERGY, but their
+    # scaling, reset semantics and meaning on this model are not field-verified.
+    # Expose raw numeric diagnostics WITHOUT kWh, energy device_class or statistics.
+    57: CapabilitySpec("Wskazanie energii · ID 57 (surowe)", diagnostic=True, publish_statistics=False),
+    59: CapabilitySpec("Wskazanie energii · ID 59 (surowe)", diagnostic=True, publish_statistics=False),
+    60: CapabilitySpec("Wskazanie energii · ID 60 (surowe)", diagnostic=True, publish_statistics=False),
+    91: CapabilitySpec("Aktywny obieg CO/CWU · ID 91", kind="enum", diagnostic=True),
+    99: CapabilitySpec("Stan funkcji CWU · ID 99", kind="binary", diagnostic=True),
+    112: CapabilitySpec("Odczyt przepływu · ID 112 (surowy)", diagnostic=True, publish_statistics=False),
+    153: CapabilitySpec("Stan ogrzewania · ID 153", kind="enum", diagnostic=True),
+    181: CapabilitySpec("Wykonywany tryb · ID 181", kind="enum", diagnostic=True),
+    380: CapabilitySpec("Kod diagnostyczny CESA · ID 380", diagnostic=True, publish_statistics=False),
     51: CapabilitySpec("Sprężarka pracuje", kind="binary", diagnostic=True),
     64: CapabilitySpec("Grzałka CWU pracuje", kind="binary", diagnostic=True),
     72: CapabilitySpec("Modulacja sprężarki", unit="%", diagnostic=True),
@@ -46,6 +59,20 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     119: CapabilitySpec("Temperatura zewnętrzna", unit="°C", category="temperature"),
     150: CapabilitySpec("Kod błędu domu", kind="text", diagnostic=True),
     180: CapabilitySpec("Kod błędu jednostki zewnętrznej", kind="text", diagnostic=True),
+}
+
+
+# Interoperability codes cross-checked with Cozytouch's public capability table.
+# Unknown values stay unknown; never guess or treat modes as compressor activity.
+READ_ONLY_ENUMS: dict[int, dict[str, str]] = {
+    91: {"1": "CO", "3": "CWU"},
+    153: {"0": "Wyłączone", "1": "Ogrzewanie", "2": "Chłodzenie"},
+    181: {
+        "0": "Wyłączony", "1": "Automatyczny", "3": "Chłodzenie",
+        "4": "Ogrzewanie", "5": "Ogrzewanie awaryjne",
+        "6": "Chłodzenie wstępne", "7": "Wentylacja",
+        "8": "Osuszanie", "9": "Nocny",
+    },
 }
 
 
@@ -68,6 +95,9 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
     if spec.kind == "text":
         return raw[:128]
 
+    if spec.kind == "enum":
+        return READ_ONLY_ENUMS[capability_id].get(raw)
+
     try:
         number = float(raw.replace(",", "."))
     except (TypeError, ValueError):
@@ -83,6 +113,8 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
     if capability_id in (24, 25, 26, 27, 28, 29) and number < 0:
         return None
     if capability_id == 72 and not 0 <= number <= 100:
+        return None
+    if capability_id in (57, 59, 60, 112) and number < 0:
         return None
     # Atlantic publishes these electrical energy counters in Wh, not kWh.
     # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".

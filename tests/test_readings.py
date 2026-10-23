@@ -77,6 +77,49 @@ class TestReadings(unittest.TestCase):
             self.assertEqual(spec.category, "energy")
             self.assertTrue(spec.cumulative)
 
+    def test_new_read_only_operating_modes(self):
+        self.assertEqual(module.normalize_value(91, "1"), "CO")
+        self.assertEqual(module.normalize_value(91, 3), "CWU")
+        self.assertIsNone(module.normalize_value(91, 5))
+        self.assertEqual(module.normalize_value(153, "1"), "Ogrzewanie")
+        self.assertIsNone(module.normalize_value(153, "999"))
+        self.assertEqual(module.normalize_value(181, "4"), "Ogrzewanie")
+        self.assertEqual(module.normalize_value(99, 0), False)
+        self.assertIsNone(module.normalize_value(99, "private text"))
+
+    def test_energy_probe_is_unscaled_and_has_no_statistics(self):
+        for cap in (57, 59, 60):
+            self.assertEqual(module.normalize_value(cap, "12345.6"), 12345.6)
+            self.assertIsNone(module.normalize_value(cap, -1))
+            spec = module.CAPABILITIES[cap]
+            self.assertIsNone(spec.unit)
+            self.assertIsNone(spec.category)
+            self.assertFalse(spec.publish_statistics)
+            self.assertTrue(spec.diagnostic)
+            self.assertFalse(spec.cumulative)
+        self.assertEqual(module.normalize_value(112, 9.5), 9.5)
+        self.assertIsNone(module.normalize_value(112, -5))
+        self.assertFalse(module.CAPABILITIES[112].publish_statistics)
+
+    def test_known_modes_and_values_are_sanitized(self):
+        sample = [{"devices": [{
+            "deviceId": 1, "name": "Atlantic",
+            "capabilities": [
+                {"capabilityId": 91, "value": "3"},
+                {"capabilityId": 153, "value": "1"},
+                {"capabilityId": 57, "value": 123456},
+                {"capabilityId": 59, "value": "SECRET_PRIVATE_VALUE"},
+                {"capabilityId": 112, "value": "5,5"},
+                {"capabilityId": 335, "value": "DO_NOT_EXPORT_SERIAL"},
+            ],
+        }]}]
+        result = module.extract_devices(sample)[0]
+        self.assertEqual(result["values"][91], "CWU")
+        self.assertEqual(result["values"][57], 123456)
+        self.assertIsNone(result["values"][59])
+        self.assertEqual(result["values"][112], 5.5)
+        self.assertNotIn("DO_NOT_EXPORT_SERIAL", str(result))
+
     def test_not_available_handled(self):
         self.assertIsNone(module.normalize_value(24, "---"))
         self.assertIsNone(module.normalize_value(51, "unrecognized"))
