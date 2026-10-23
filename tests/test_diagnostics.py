@@ -1,0 +1,68 @@
+"""Privacy tests for the real HA diagnostics handler, run without HA installed."""
+
+import ast
+import json
+from pathlib import Path
+from types import SimpleNamespace
+import unittest
+
+ROOT = Path(__file__).resolve().parents[1]
+DIAGNOSTICS = ROOT / "custom_components" / "atlantic_cozytouch" / "diagnostics.py"
+
+
+def load_handler():
+    """Compile the real handler only; stub dependency names instead of HA."""
+    tree = ast.parse(DIAGNOSTICS.read_text(encoding="utf-8"))
+    func = next(n for n in tree.body if isinstance(n, ast.AsyncFunctionDef)
+                and n.name == "async_get_config_entry_diagnostics")
+    module = ast.Module(body=[
+        ast.ImportFrom(module="__future__", names=[ast.alias(name="annotations")], level=0),
+        func,
+    ], type_ignores=[])
+    ast.fix_missing_locations(module)
+    globals_ = {"DOMAIN": "atlantic_cozytouch", "CAPABILITIES": {24: True, 109: True}}
+    exec(compile(module, str(DIAGNOSTICS), "exec"), globals_)
+    return globals_["async_get_config_entry_diagnostics"]
+
+
+class TestDiagnosticsPrivacy(unittest.IsolatedAsyncioTestCase):
+    async def test_returns_ids_and_counts_never_values_or_secrets(self):
+        handler = load_handler()
+        entry = SimpleNamespace(entry_id="EXAMPLE_PRIVATE_ENTRY",
+                                data={"username": "user@example.invalid", "password": "SECRET_PASSWORD"})
+        coordinator = SimpleNamespace(
+            last_update_success=True,
+            data=[{
+                "id": "PRIVATE_DEVICE_123",
+                "name": "PRIVATE_ROOM_NAME",
+                "gatewaySerialNumber": "PRIVATE_SERIAL_888",
+                "values": {24: "SECRET_VALUE", 109: 33.3},
+                "reported_capability_ids": [24, 109, 555],
+            }],
+        )
+        hass = SimpleNamespace(data={"atlantic_cozytouch": {entry.entry_id: coordinator}})
+        report = await handler(hass, entry)
+
+        self.assertEqual(report["device_capability_inventory"], [{
+            "index": 1,
+            "reported_count": 3,
+            "known_capability_ids": [24, 109],
+            "unmapped_capability_ids": [555],
+        }])
+        self.assertTrue(report["last_poll_ok"])
+        dumped = json.dumps(report, ensure_ascii=False)
+        for secret in ("SECRET_", "PRIVATE_", "user@example", "33.3", "gatewaySerial", "password"):
+            self.assertNotIn(secret, dumped)
+
+    async def test_no_device_snapshot_retained_after_failure(self):
+        handler = load_handler()
+        entry = SimpleNamespace(entry_id="e", data={"password": "SECRET"})
+        coordinator = SimpleNamespace(data=None, last_update_success=False)
+        hass = SimpleNamespace(data={"atlantic_cozytouch": {"e": coordinator}})
+        report = await handler(hass, entry)
+        self.assertEqual(report["device_capability_inventory"], [])
+        self.assertFalse(report["last_poll_ok"])
+
+
+if __name__ == "__main__":
+    unittest.main()
