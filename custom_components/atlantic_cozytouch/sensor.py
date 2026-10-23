@@ -1,4 +1,4 @@
-"""Read-only sensors for known Atlantic capability identifiers."""
+"""Read-only Atlantic sensors with dynamic discovery after startup."""
 
 from __future__ import annotations
 
@@ -7,23 +7,35 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .discovery import new_capabilities, inventory_summary
 from .readings import CAPABILITIES
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
-    entities = []
-    for device in coordinator.data:
-        for cap_id, spec in CAPABILITIES.items():
-            if spec.kind == "binary" or cap_id not in device["values"]:
-                continue
+    seen: set[tuple[str, int]] = set()
+
+    def add_new() -> None:
+        discovered = new_capabilities(coordinator.data or [], kind="sensor", seen=seen)
+        entities = []
+        for device, cap_id in discovered:
+            seen.add((device["id"], cap_id))
             entities.append(AtlanticReadOnlySensor(coordinator, device, cap_id))
-    entities.append(AtlanticLastPollSensor(coordinator, entry.entry_id))
-    async_add_entities(entities)
+        if entities:
+            async_add_entities(entities)
+
+    # Preserve the existing diagnostic unique_id across upgrades.
+    async_add_entities([
+        AtlanticLastPollSensor(coordinator, entry.entry_id),
+        AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
+    ])
+    add_new()
+    unsub = coordinator.async_add_listener(add_new)
+    entry.async_on_unload(unsub)
 
 
 class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
-    """Publish a value from the last Atlantic snapshot."""
+    """Read a known vendor capability, identified by device ID and cap ID."""
 
     _attr_has_entity_name = True
 
@@ -61,14 +73,14 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def native_value(self):
-        for device in self.coordinator.data:
+        for device in self.coordinator.data or []:
             if device["id"] == self._device_id:
                 return device["values"].get(self._capability_id)
         return None
 
 
 class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):
-    """Timestamp of the most recent successful read from the Atlantic cloud."""
+    """Timestamp of the most recent successful read from Atlantic."""
 
     _attr_has_entity_name = True
     _attr_name = "Ostatni udany odczyt"
@@ -81,9 +93,34 @@ class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
-        # Even if a subsequent poll fails, keep the last successful timestamp.
         return True
 
     @property
     def native_value(self):
         return getattr(self.coordinator, "atlantic_last_success_at", None)
+
+
+class AtlanticCapabilityInventorySensor(CoordinatorEntity, SensorEntity):
+    """Count discovered capability IDs, never expose their raw values."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Wykryte parametry Atlantic"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:format-list-numbered"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_capability_count"
+
+    @property
+    def native_value(self):
+        return inventory_summary(self.coordinator.data or [])["reported_count"]
+
+    @property
+    def extra_state_attributes(self):
+        summary = inventory_summary(self.coordinator.data or [])
+        return {
+            "known_capabilities": summary["known_count"],
+            "unmapped_capabilities": summary["unmapped_count"],
+            "devices": summary["device_count"],
+        }

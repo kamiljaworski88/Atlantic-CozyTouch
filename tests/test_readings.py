@@ -58,6 +58,15 @@ class TestReadings(unittest.TestCase):
         self.assertNotIn(1234, device["values"])
         self.assertNotIn("PRIVATE_NEVER_SAVE_THIS_VALUE", str(device))
 
+    def test_large_vendor_capability_ids_are_retained_in_inventory(self):
+        payload = [{"devices": [{"deviceId": "s", "capabilities": [
+            {"capabilityId": 100506, "value": "must not be exported"},
+            {"capabilityId": 2147483648, "value": "out of bounded range"},
+        ]}]}]
+        devices = module.extract_devices(payload)
+        self.assertEqual(devices[0]["reported_capability_ids"], [100506])
+        self.assertNotIn("must not be exported", str(devices))
+
     def test_energy_in_watt_hours_converted_to_kwh(self):
         self.assertEqual(module.normalize_value(44, 12345), 12.345)
         self.assertEqual(module.normalize_value(45, "500"), 0.5)
