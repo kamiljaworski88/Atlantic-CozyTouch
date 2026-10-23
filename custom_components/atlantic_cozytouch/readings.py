@@ -70,7 +70,9 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
 
     if not (-1000000000000 < number < 1000000000000):
         return None
-    if capability_id == 119 and number <= -327.68:
+    # The vendor sometimes reports ~-273 °C for an inactive temperature probe.
+    # This is an invalid sentinel, not a physical water/room temperature.
+    if spec.category == "temperature" and (number <= -200 or number > 180):
         return None
     # Atlantic publishes these electrical energy counters in Wh, not kWh.
     # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".
@@ -103,6 +105,7 @@ def extract_devices(payload: object) -> list[dict]:
             continue
 
         values: dict[int, float | str | bool | None] = {}
+        reported_ids: set[int] = set()
         raw_capabilities = item.get("capabilities", [])
         if isinstance(raw_capabilities, list):
             if len(raw_capabilities) > MAX_CAPABILITIES_PER_DEVICE:
@@ -114,15 +117,20 @@ def extract_devices(payload: object) -> list[dict]:
                     cap_id = int(cap.get("capabilityId"))
                 except (ValueError, TypeError):
                     continue
+                if not 0 <= cap_id <= 65535:
+                    continue
+                reported_ids.add(cap_id)
                 if cap_id in CAPABILITIES:
                     values[cap_id] = normalize_value(cap_id, cap.get("value"))
 
-        if values:
+        if values or reported_ids:
             result.append(
                 {
                     "id": safe_id,
                     "name": str(item.get("name") or "Atlantic")[:100],
                     "values": values,
+                    # IDs only; no unknown measurements are retained/exported.
+                    "reported_capability_ids": sorted(reported_ids),
                 }
             )
     return result

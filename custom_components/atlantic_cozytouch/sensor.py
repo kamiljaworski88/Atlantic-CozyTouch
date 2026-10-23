@@ -18,6 +18,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             if spec.kind == "binary" or cap_id not in device["values"]:
                 continue
             entities.append(AtlanticReadOnlySensor(coordinator, device, cap_id))
+    entities.append(AtlanticLastPollSensor(coordinator, entry.entry_id))
     async_add_entities(entities)
 
 
@@ -64,3 +65,25 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
             if device["id"] == self._device_id:
                 return device["values"].get(self._capability_id)
         return None
+
+
+class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):
+    """Timestamp of the most recent successful read from the Atlantic cloud."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Ostatni udany odczyt"
+    _attr_device_class = SensorDeviceClass.TIMESTAMP
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_last_success"
+
+    @property
+    def available(self) -> bool:
+        # Even if a subsequent poll fails, keep the last successful timestamp.
+        return True
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, "atlantic_last_success_at", None)
