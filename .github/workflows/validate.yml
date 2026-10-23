@@ -20,3 +20,31 @@ jobs:
         run: python -m compileall -q custom_components tests
       - name: Read-only and mapping tests
         run: python -m unittest discover -s tests -v
+
+  ha-import-smoke:
+    name: Home Assistant 2026.10.2 import
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Install production Home Assistant version
+        run: python -m pip install "homeassistant==2026.10.2"
+      - name: Import integration modules using real HA APIs
+        run: |
+          python - <<'PY'
+          import importlib
+          for path in (
+              "custom_components.atlantic_cozytouch",
+              "custom_components.atlantic_cozytouch.api",
+              "custom_components.atlantic_cozytouch.config_flow",
+              "custom_components.atlantic_cozytouch.sensor",
+              "custom_components.atlantic_cozytouch.binary_sensor",
+          ):
+              importlib.import_module(path)
+              print("OK", path)
+          PY
