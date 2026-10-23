@@ -71,6 +71,16 @@ class TestNoWriteSurface(unittest.TestCase):
         self.assertNotIn("put", session_methods)
         self.assertNotIn("delete", session_methods)
 
+    def test_endpoints_are_exactly_vendor_cloud(self):
+        const = (ROOT / "custom_components" / "atlantic_cozytouch" / "const.py").read_text(encoding="utf-8")
+        self.assertIn('API_ORIGIN = "https://apis.groupe-atlantic.com"', const)
+        self.assertIn('TOKEN_PATH = "/users/token"', const)
+        self.assertIn('READ_PATH = "/magellan/cozytouch/setupviewv2"', const)
+        client = API.read_text(encoding="utf-8")
+        self.assertIn("allow_redirects=False", client)
+        self.assertNotIn("ssl=False", client)
+        self.assertNotIn("verify_ssl=False", client)
+
     def test_only_read_only_ha_platforms(self):
         root = INIT.read_text(encoding="utf-8")
         self.assertIn("Platform.SENSOR, Platform.BINARY_SENSOR", root)
