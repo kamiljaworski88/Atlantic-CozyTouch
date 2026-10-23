@@ -40,7 +40,8 @@ def extract_electricity_days(payload: object) -> dict[int, dict[str, float]]:
         category = series.get("category")
         if type(category) is not int or category not in CATEGORIES:
             continue
-        if (type(series.get("type")) is not int or series.get("type") != 1\n                or type(series.get("unit")) is not int or series.get("unit") != 1):
+        if (type(series.get("type")) is not int or series.get("type") != 1
+                or type(series.get("unit")) is not int or series.get("unit") != 1):
             # A reported category with unexpected type/unit cannot be
             # interpreted as electricity kWh. Fail closed for that category.
             ambiguous_categories.add(category)
