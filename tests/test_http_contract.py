@@ -90,6 +90,32 @@ class Session:
         return Reply(self.read_status, self.setup_payload, headers=self.headers)
 
 
+class ConsumptionSession(Session):
+    """Simulated daily series; no real account or Internet connection."""
+
+    def __init__(self, *, status=200, consumption_payload=None, setup_id=123):
+        super().__init__(setup_payload=[{
+            "id": setup_id,
+            "devices": [{"deviceId": 9, "capabilities": [
+                {"capabilityId": 164, "value": "1298"},
+            ]}],
+        }])
+        self.consumption_status = status
+        self.consumption_payload = consumption_payload if consumption_payload is not None else [{
+            "type": 1, "unit": 1, "deviceId": "NEVER_EXPORT",
+            "consumptionPeriods": [{
+                "consumedQuantity": 9.9, "producedQuantity": 23.4,
+                "date": 1788825600,
+            }],
+        }]
+
+    def get(self, url, **kwargs):
+        if "/consumptions?periodicity=daily" in url:
+            self.calls.append(("GET", url, kwargs))
+            return Reply(self.consumption_status, self.consumption_payload)
+        return super().get(url, **kwargs)
+
+
 class TestHttpContract(unittest.IsolatedAsyncioTestCase):
     async def test_authorized_calls_are_exactly_login_and_read(self):
         session = Session()
@@ -208,6 +234,51 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
                 with self.assertRaises(AtlanticError):
                     await client.async_read()
                 self.assertEqual([x[0] for x in session.calls], ["POST", "GET"])
+
+    async def test_consumption_probe_only_calls_current_setup_exact_get(self):
+        session = ConsumptionSession()
+        client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+        await client.async_read()
+        await client.async_probe_consumptions()
+        self.assertEqual(client.consumption_summary["state"], "dostepna")
+        self.assertEqual(client.consumption_summary["okresy_z_energia_wyprodukowana"], 1)
+        self.assertNotIn("23.4", str(client.consumption_summary))
+        target = API_ORIGIN + "/magellan/setups/123/consumptions?periodicity=daily"
+        self.assertEqual([(m, u) for m, u, _ in session.calls], [
+            ("POST", API_ORIGIN + TOKEN_PATH),
+            ("GET", API_ORIGIN + READ_PATH), ("GET", target),
+        ])
+        await client.async_probe_consumptions()  # 15-minute minimum interval.
+        self.assertEqual(len(session.calls), 3)
+        for bad in (target + "&admin=true", target.replace("123", "124"),
+                    target.replace("daily", "monthly"),
+                    API_ORIGIN + "/magellan/executions/writecapability"):
+            with self.assertRaises(AtlanticError):
+                client._request("GET", bad)
+        with self.assertRaises(AtlanticError):
+            client._request("POST", target)
+
+    async def test_unauthorized_or_missing_history_does_not_break_main_poll(self):
+        for status, expected in ((403, "odmowa_dostepu"),
+                                 (404, "brak_endpointu"),
+                                 (500, "blad_http"),
+                                 (429, "limit_zapytan")):
+            with self.subTest(status=status):
+                session = ConsumptionSession(status=status)
+                client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+                devices = await client.async_read()
+                await client.async_probe_consumptions()
+                self.assertEqual(client.consumption_summary["state"], expected)
+                self.assertEqual(devices[0]["values"][164], 1298.0)
+                self.assertNotIn("deviceId", str(client.consumption_summary))
+
+    async def test_without_numeric_setup_id_no_probe_get_is_sent(self):
+        session = ConsumptionSession(setup_id="not-a-number")
+        client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+        await client.async_read()
+        await client.async_probe_consumptions()
+        self.assertEqual(client.consumption_summary["state"], "brak_id_instalacji")
+        self.assertEqual([m for m, _, _ in session.calls], ["POST", "GET"])
 
 
 if __name__ == "__main__":

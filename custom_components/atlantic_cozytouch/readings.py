@@ -45,6 +45,7 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     99: CapabilitySpec("Stan funkcji CWU · ID 99", kind="binary", diagnostic=True),
     112: CapabilitySpec("Odczyt przepływu · ID 112 (surowy)", diagnostic=True, publish_statistics=False),
     153: CapabilitySpec("Stan ogrzewania · ID 153", kind="enum", diagnostic=True),
+    164: CapabilitySpec("Możliwości pomiaru energii · ID 164", diagnostic=True, publish_statistics=False),
     181: CapabilitySpec("Wykonywany tryb · ID 181", kind="enum", diagnostic=True),
     380: CapabilitySpec("Kod diagnostyczny CESA · ID 380", diagnostic=True, publish_statistics=False),
     51: CapabilitySpec("Sprężarka pracuje", kind="binary", diagnostic=True),

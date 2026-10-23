@@ -37,6 +37,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
 
+## v0.4.2 — ostrożny test endpointu historii energii
+
+- Opcjonalny odczyt wyłącznie GET `/magellan/setups/{setupId}/consumptions?periodicity=daily`, nie częściej niż co 15 minut. Identyfikator instalacji jest walidowany i nigdy nie trafia do diagnostyki.
+- Nowy sensor diagnostyczny **Historia energii Atlantic · test API** pokazuje status, liczby okresów z `consumedQuantity` / `producedQuantity` oraz kody typów i jednostek — **bez surowych danych zużycia**.
+- Surowy ID **164** jest dostępny do weryfikacji wraz z flagami: elektryczność CO/CWU i deklarowane wytwarzanie ciepła CO/CWU.
+- Żaden licznik nie dostaje nowych jednostek kWh, nie powstaje COP, nie zmienia się Energy Dashboard. COP będzie możliwy dopiero po potwierdzeniu semantyki i okresów na Twojej pompie.
+- Endpoint 403/404 jest wyłączany do ponownego wczytania integracji; 429 uruchamia istniejący mechanizm odczekania. Niepowodzenie dodatkowego odczytu nie psuje podstawowych sensorów.
+- Zobacz [test i interpretację odczytu](docs/CONSUMPTION_PROBE_0_4_2.md). To wersja **do przeglądu i testów**, nie potwierdzenie dostępności energii cieplnej w Extensa.
+
 ## v0.4.1 — walidacja odczytów energii i świeżości danych
 
 - Nowy status ID `60`: rozróżnia brak wartości, pustą odpowiedź, niepoprawny format, wartość ujemną lub poza zakresem. Nie eksportuje surowego tekstu API.
