@@ -21,11 +21,16 @@ class CapabilitySpec:
 
 MAX_DEVICES_PER_ACCOUNT = 128
 MAX_CAPABILITIES_PER_DEVICE = 1024
+MAX_CAPABILITY_ID = 2_147_483_647  # Vendor also uses six-digit identifiers.
 
 CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
     24: CapabilitySpec("Uruchomienia sprężarki", cumulative=True, diagnostic=True),
+    25: CapabilitySpec("Uruchomienia pompy obiegu CO", cumulative=True, diagnostic=True),
+    26: CapabilitySpec("Uruchomienia pompy obiegu CWU", cumulative=True, diagnostic=True),
     27: CapabilitySpec("Czas pracy sprężarki", unit="s", category="duration", cumulative=True, diagnostic=True),
+    28: CapabilitySpec("Czas pracy pompy CO", unit="h", category="duration", cumulative=True, diagnostic=True),
+    29: CapabilitySpec("Czas pracy pompy CWU", unit="h", category="duration", cumulative=True, diagnostic=True),
     44: CapabilitySpec("Zużycie energii elektrycznej CO", unit="kWh", category="energy", cumulative=True),
     45: CapabilitySpec("Zużycie energii elektrycznej CWU", unit="kWh", category="energy", cumulative=True),
     46: CapabilitySpec("Łączne zużycie energii elektrycznej", unit="kWh", category="energy", cumulative=True),
@@ -117,7 +122,7 @@ def extract_devices(payload: object) -> list[dict]:
                     cap_id = int(cap.get("capabilityId"))
                 except (ValueError, TypeError):
                     continue
-                if not 0 <= cap_id <= 65535:
+                if not 0 <= cap_id <= MAX_CAPABILITY_ID:
                     continue
                 reported_ids.add(cap_id)
                 if cap_id in CAPABILITIES:
