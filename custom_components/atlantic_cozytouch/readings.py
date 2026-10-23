@@ -7,6 +7,7 @@ Only explicitly recognized capabilities become entities.
 from __future__ import annotations
 
 from dataclasses import dataclass
+from math import isfinite
 
 
 @dataclass(frozen=True, slots=True)
@@ -26,6 +27,25 @@ MAX_CAPABILITY_ID = 2_147_483_647  # Vendor also uses six-digit identifiers.
 
 CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
+    # Read-only controls/setpoints exposed as sensors, never actuators.
+    22: CapabilitySpec("Temperatura zadana CWU", unit="°C", category="temperature"),
+    23: CapabilitySpec("Temperatura CWU komfort", unit="°C", category="temperature", diagnostic=True),
+    39: CapabilitySpec("Temperatura CWU ECO", unit="°C", category="temperature", diagnostic=True),
+    40: CapabilitySpec("Temperatura zadana strefy 1", unit="°C", category="temperature"),
+    41: CapabilitySpec("Temperatura ECO strefy 1", unit="°C", category="temperature", diagnostic=True),
+    42: CapabilitySpec("Temperatura komfort strefy 2", unit="°C", category="temperature", diagnostic=True),
+    43: CapabilitySpec("Temperatura ECO strefy 2", unit="°C", category="temperature", diagnostic=True),
+    65: CapabilitySpec("Stan wentylatora · ID 65", kind="enum", diagnostic=True),
+    66: CapabilitySpec("Stan pompy cyrkulacyjnej CWU · ID 66", kind="enum", diagnostic=True),
+    68: CapabilitySpec("Grzałka elektryczna stopień 1 · ID 68", kind="enum", diagnostic=True),
+    70: CapabilitySpec("Grzałka elektryczna stopień 2 · ID 70", kind="enum", diagnostic=True),
+    164: CapabilitySpec("Obsługiwane pomiary energii · ID 164 (maska)", diagnostic=True, publish_statistics=False),
+    192: CapabilitySpec("Krzywa grzewcza: zasilanie przy -10°C", unit="°C", category="temperature", diagnostic=True),
+    193: CapabilitySpec("Krzywa grzewcza: zasilanie przy +20°C", unit="°C", category="temperature", diagnostic=True),
+    194: CapabilitySpec("Krzywa chłodzenia: zasilanie przy +35°C", unit="°C", category="temperature", diagnostic=True),
+    195: CapabilitySpec("Krzywa chłodzenia: zasilanie przy +25°C", unit="°C", category="temperature", diagnostic=True),
+    254: CapabilitySpec("Temperatura bazowa CWU bez wymuszenia", unit="°C", category="temperature", diagnostic=True),
+    317: CapabilitySpec("Dostępny drugi obieg grzewczy · ID 317", kind="binary", diagnostic=True),
     24: CapabilitySpec("Uruchomienia sprężarki", cumulative=True, diagnostic=True),
     25: CapabilitySpec("Uruchomienia pompy obiegu CO", cumulative=True, diagnostic=True),
     26: CapabilitySpec("Uruchomienia pompy obiegu CWU", cumulative=True, diagnostic=True),
@@ -65,6 +85,10 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
 # Interoperability codes cross-checked with Cozytouch's public capability table.
 # Unknown values stay unknown; never guess or treat modes as compressor activity.
 READ_ONLY_ENUMS: dict[int, dict[str, str]] = {
+    65: {"0": "Wyłączony", "1": "Włączony"},
+    66: {"0": "Wyłączona", "1": "Włączona"},
+    68: {"1": "Modulacja", "2": "Wyłączona", "3": "Włączona"},
+    70: {"1": "Wyłączona", "2": "Włączona"},
     91: {"1": "CO", "3": "CWU"},
     153: {"0": "Wyłączone", "1": "Ogrzewanie", "2": "Chłodzenie"},
     181: {
@@ -92,6 +116,22 @@ def energy_value_status(value: object) -> str:
     if not (0 <= number < 1_000_000_000_000):
         return "negative" if number < 0 else "out_of_range"
     return "valid"
+
+
+def provisional_energy_kwh(capability_id: int, raw_value: object) -> float | None:
+    """Assumed Wh -> kWh for IDs 57/59; no statistics or COP derivation.
+
+    Never modify the original unscaled capability readings or attach a
+    cumulative state class before the vendor's period/reset semantics are known.
+    """
+    if capability_id not in (57, 59) or isinstance(raw_value, bool):
+        return None
+    if not isinstance(raw_value, (float, int)):
+        return None
+    number = float(raw_value)
+    if not isfinite(number) or not 0 <= number < 1_000_000_000_000:
+        return None
+    return round(number / 1000.0, 3)
 
 
 def normalize_value(capability_id: int, value: object) -> float | str | bool | None:

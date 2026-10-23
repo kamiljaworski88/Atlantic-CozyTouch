@@ -13,7 +13,7 @@ from .const import DOMAIN, POLL_SECONDS
 from .energy_validation import freshness_status
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import new_capabilities, inventory_summary
-from .readings import CAPABILITIES
+from .readings import CAPABILITIES, provisional_energy_kwh
 
 
 async def async_setup_entry(hass, entry, async_add_entities):
@@ -21,6 +21,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     seen: set[tuple[str, int]] = set()
     seen_derived: set[tuple[str, str]] = set()
     seen_energy: set[tuple[str, int]] = set()
+    seen_provisional: set[tuple[str, str]] = set()
 
     def add_new() -> None:
         discovered = new_capabilities(coordinator.data or [], kind="sensor", seen=seen)
@@ -47,6 +48,20 @@ async def async_setup_entry(hass, entry, async_add_entities):
                 if key not in seen_energy:
                     seen_energy.add(key)
                     entities.append(AtlanticRawEnergyDeltaSensor(coordinator, device, cap_id))
+
+            # Model-specific assumption from on-device monthly display:
+            # 57 -> CO (Wh), 59 -> CWU (Wh). No long-term HA statistics.
+            for cap_id in (57, 59):
+                if cap_id not in reported:
+                    continue
+                assumed_key = (device["id"], str(cap_id))
+                if assumed_key not in seen_provisional:
+                    seen_provisional.add(assumed_key)
+                    entities.append(AtlanticProvisionalEnergySensor(coordinator, device, cap_id))
+            total_key = (device["id"], "sum")
+            if {57, 59}.issubset(reported) and total_key not in seen_provisional:
+                seen_provisional.add(total_key)
+                entities.append(AtlanticProvisionalEnergySensor(coordinator, device, None))
             if 60 in device.get("reported_capability_ids", []):
                 key = (device["id"], 60)
                 if key not in seen_energy:
@@ -110,6 +125,59 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
             if device["id"] == self._device_id:
                 return device["values"].get(self._capability_id)
         return None
+
+
+class AtlanticProvisionalEnergySensor(CoordinatorEntity, SensorEntity):
+    """Model-specific Wh->kWh hypothesis, without Energy Dashboard state class."""
+
+    _attr_has_entity_name = True
+    _attr_native_unit_of_measurement = "kWh"
+    _attr_icon = "mdi:lightning-bolt-outline"
+
+    def __init__(self, coordinator, device: dict, cap_id: int | None) -> None:
+        super().__init__(coordinator)
+        self._device_id = device["id"]
+        self._cap_id = cap_id
+        self._attr_name = {
+            57: "Energia elektryczna CO (robocza)",
+            59: "Energia elektryczna CWU (robocza)",
+            None: "Energia elektryczna CO i CWU (suma robocza)",
+        }[cap_id]
+        self._attr_unique_id = (
+            f"{DOMAIN}_{self._device_id}_provisional_electric_"
+            f"{cap_id if cap_id is not None else 'sum'}"
+        )
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=device["name"],
+            manufacturer="Atlantic",
+        )
+        # Deliberately no SensorStateClass.TOTAL_INCREASING and no COP.
+
+    @property
+    def native_value(self):
+        for device in self.coordinator.data or []:
+            if device["id"] != self._device_id:
+                continue
+            reported = set(device.get("reported_capability_ids", []))
+            required = (57, 59) if self._cap_id is None else (self._cap_id,)
+            if not set(required).issubset(reported):
+                return None
+            parts = [provisional_energy_kwh(cap, device["values"].get(cap)) for cap in required]
+            if any(part is None for part in parts):
+                return None
+            return round(sum(parts), 3)
+        return None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "source_capability_ids": [57, 59] if self._cap_id is None else [self._cap_id],
+            "scaling_assumption": "Wh / 1000",
+            "mapping_verified": False,
+            "counter_period_verified": False,
+            "home_assistant_energy_statistics": False,
+        }
 
 
 class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):

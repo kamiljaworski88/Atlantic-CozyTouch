@@ -13,6 +13,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
 
+## v0.4.2 — dodatkowe odczyty i robocze kWh (PR do przeglądu)
+
+- Na podstawie porównania wyświetlacza i ID 57/59 wprowadzono **jawnie robocze założenie**: 57 = energia elektryczna CO w Wh, 59 = energia elektryczna CWU w Wh. Powstają trzy **nowe** sensory CO, CWU i suma w kWh. Oryginalne surowe encje i ich `unique_id` pozostają bez zmian. To interpretacja robocza, **nie skalowanie potwierdzone przez producenta**.
+- Nie przypisujemy `state_class: total_increasing` ani nie dodajemy odczytów roboczych do panelu Energia: na razie nie znamy okresu, w którym liczniki się zerują. Nie wyliczamy kosztów ani COP.
+- Obsługujemy dodatkowe **wyłącznie odczytowe** parametry, o ile pojawią się w odpowiedzi Atlantic: nastawy temperatur CO/CWU (22,23,39–43,254), krzywą grzewczą/chłodzenia (192–195), stan wentylatora/pompy CWU i grzałek (65,66,68,70), obsługiwane rodzaje statystyk energii (164) oraz obecność drugiego obiegu (317).
+- Nie znaleziono zweryfikowanego, aktualnego identyfikatora **pomiaru COP** w publicznej tabeli Cozytouch. ID 107079 dotyczy **progu COP**, a nie rzeczywistego współczynnika. Jeśli urządzenie raportuje własny COP, potrzebna będzie weryfikacja jego identyfikatora na zanonimizowanym raporcie `Pobierz diagnostykę`.
+- Żadnych nowych żądań API, sterowania, serwerów pośrednich ani ujawniania wartości w eksporcie diagnostycznym.
+- Instrukcja: [Nowe odczyty i pulpit](docs/EXTRA_READINGS_0_4_2.md).
+
 ## v0.1.1 — jakość danych i diagnostyka
 
 - Wartości temperatur poniżej -200°C (np. -273,1°C), typowo oznaczające brak pomiaru, stają się `unknown` zamiast zafałszowywać wykresy. Nie modyfikujemy historii zapisanej wcześniej w Recorder.
