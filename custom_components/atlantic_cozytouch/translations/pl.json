@@ -1,0 +1,21 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "Atlantic CozyTouch — tylko odczyt",
+        "description": "Integracja pobiera dane z oficjalnej chmury Atlantic. Nie może zmieniać ustawień pompy.",
+        "data": {
+          "username": "E-mail konta Atlantic",
+          "password": "Hasło konta Atlantic"
+        }
+      }
+    },
+    "error": {
+      "invalid_auth": "Atlantic odrzucił dane logowania.",
+      "cannot_connect": "Nie można pobrać danych z chmury Atlantic."
+    },
+    "abort": {
+      "already_configured": "To konto Atlantic jest już skonfigurowane."
+    }
+  }
+}

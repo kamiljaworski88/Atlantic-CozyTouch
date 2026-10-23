@@ -1,0 +1,22 @@
+name: Read-only integration checks
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+jobs:
+  static-and-offline-tests:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+      - name: Compile Python
+        run: python -m compileall -q custom_components tests
+      - name: Read-only and mapping tests
+        run: python -m unittest discover -s tests -v
