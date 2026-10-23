@@ -31,45 +31,113 @@ def _nonnegative_number(value: object) -> bool:
         return False
 
 
+def _safe_code(value: object) -> int | None:
+    """Export only bounded numeric codes, not arbitrary vendor text."""
+    return value if type(value) is int and 0 <= value <= 10000 else None
+
+
+def _utc_day(value: object) -> str | None:
+    """An API period has a UTC epoch-seconds date; reject other forms."""
+    from datetime import datetime, timezone
+
+    if type(value) is not int or not 946684800 <= value <= 4102444799:
+        return None
+    return datetime.fromtimestamp(value, tz=timezone.utc).date().isoformat()
+
+
 def summarize_consumptions(payload: object) -> dict:
-    """Return counts/types only, never raw consumption, dates or identifiers."""
+    """Summarize each reported series, never exposing raw measurements or IDs.
+
+    This is a shape audit, NOT a CO/CWU mapping, meter, or verified COP.
+    Dates are UTC calendar days only; no raw epoch timestamps are returned.
+    """
     if not isinstance(payload, list) or len(payload) > 256:
         return {"state": "nieprawidlowa_odpowiedz"}
     kinds: set[int] = set()
     units: set[int] = set()
-    rows = 0
-    consumed = produced = 0
-    for series in payload:
+    consumed = produced = positive_production = 0
+    details = []
+    for index, series in enumerate(payload, start=1):
         if not isinstance(series, dict):
             return {"state": "nieprawidlowa_odpowiedz"}
-        rows += 1
-        kind = series.get("type")
-        unit = series.get("unit")
-        if type(kind) is int and 0 <= kind <= 10000:
+        kind = _safe_code(series.get("type"))
+        unit = _safe_code(series.get("unit"))
+        category = _safe_code(series.get("category"))
+        if kind is not None:
             kinds.add(kind)
-        if type(unit) is int and 0 <= unit <= 10000:
+        if unit is not None:
             units.add(unit)
         periods = series.get("consumptionPeriods")
         if periods is None:
-            continue
+            periods = []
         if not isinstance(periods, list) or len(periods) > 3660:
             return {"state": "nieprawidlowa_odpowiedz"}
+        days = set()
+        modes: set[int] = set()
+        profiles: set[int] = set()
+        taken = produced_count = positive_count = missing_production = 0
+        invalid_dates = 0
         for period in periods:
             if not isinstance(period, dict):
                 return {"state": "nieprawidlowa_odpowiedz"}
+            day = _utc_day(period.get("date"))
+            if day is not None:
+                days.add(day)
+            elif "date" in period:
+                invalid_dates += 1
+            mode = _safe_code(period.get("mode"))
+            if mode is not None:
+                modes.add(mode)
+            profile = _safe_code(period.get("profil"))
+            if profile is not None:
+                profiles.add(profile)
             if _nonnegative_number(period.get("consumedQuantity")):
-                consumed += 1
-            if _nonnegative_number(period.get("producedQuantity")):
-                produced += 1
+                taken += 1
+            production = period.get("producedQuantity")
+            if _nonnegative_number(production):
+                produced_count += 1
+                if production > 0:
+                    positive_count += 1
+            else:
+                missing_production += 1
+        consumed += taken
+        produced += produced_count
+        positive_production += positive_count
+        details.append({
+            "indeks": index,
+            "kategoria_kod": category,
+            "typ_kod": kind,
+            "jednostka_kod": unit,
+            "typ_wg_znanego_przykladu": (
+                "energia_elektryczna" if kind == 1 else "niezweryfikowany"
+            ),
+            "jednostka_wg_znanego_przykladu": (
+                "kWh" if kind == 1 and unit == 1 else "niezweryfikowana"
+            ),
+            "przypisanie_co_cwu": "niepotwierdzone",
+            "liczba_rekordow": len(periods),
+            "liczba_dni_utc": len(days),
+            "data_od_utc": min(days) if days else None,
+            "data_do_utc": max(days) if days else None,
+            "nieprawidlowe_daty": invalid_dates,
+            "tryby_kody": sorted(modes),
+            "profile_kody": sorted(profiles),
+            "okresy_z_energia_pobrana": taken,
+            "okresy_z_energia_wyprodukowana": produced_count,
+            "okresy_z_dodatnia_produkcja": positive_count,
+            "okresy_bez_liczbowej_produkcji": missing_production,
+        })
     return {
-        "state": "dostepna" if rows else "brak_danych",
-        "serie": rows,
+        "state": "dostepna" if payload else "brak_danych",
+        "serie": len(payload),
         "typy": sorted(kinds),
         "jednostki": sorted(units),
         "okresy_z_energia_pobrana": consumed,
         "okresy_z_energia_wyprodukowana": produced,
         "mozliwy_pomiar_produkcji": produced > 0,
         "cop_zweryfikowany": False,
+        "okresy_z_dodatnia_produkcja": positive_production,
+        "serie_szczegoly": details,
     }
 
 
