@@ -35,6 +35,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def update():
         try:
             devices = await client.async_read()
+            # Optional endpoint; errors are isolated from standard telemetry.
+            await client.async_probe_consumptions()
+            coordinator.atlantic_consumptions = dict(client.consumption_summary)
             observed_at = datetime.now(UTC)
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
