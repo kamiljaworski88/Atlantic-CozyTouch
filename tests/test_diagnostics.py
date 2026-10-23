@@ -65,8 +65,9 @@ class TestDiagnosticsPrivacy(unittest.IsolatedAsyncioTestCase):
             "compressor_capability_ids": [24],
         }])
         self.assertTrue(report["last_poll_ok"])
-        self.assertEqual(report["diagnostics_format"], 3)
+        self.assertEqual(report["diagnostics_format"], 4)
         self.assertEqual(report["energy_validation"], [])
+        self.assertEqual(report["consumption_probe"], {"state": "nie_sprawdzono"})
         dumped = json.dumps(report, ensure_ascii=False)
         for secret in ("SECRET_", "PRIVATE_", "user@example", "33.3", "gatewaySerial", "password"):
             self.assertNotIn(secret, dumped)
