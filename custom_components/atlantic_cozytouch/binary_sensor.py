@@ -18,6 +18,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
             if spec.kind != "binary" or cap_id not in device["values"]:
                 continue
             entities.append(AtlanticReadOnlyBinarySensor(coordinator, device, cap_id))
+    entities.append(AtlanticCloudStatusSensor(coordinator, entry.entry_id))
     async_add_entities(entities)
 
 
@@ -45,3 +46,24 @@ class AtlanticReadOnlyBinarySensor(CoordinatorEntity, BinarySensorEntity):
             if device["id"] == self._device_id:
                 return device["values"].get(self._capability_id)
         return None
+
+
+class AtlanticCloudStatusSensor(CoordinatorEntity, BinarySensorEntity):
+    """HA-level polling health, not the compressor or physical pump state."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Odczyt z chmury Atlantic działa"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_cloud_read_ok"
+
+    @property
+    def available(self) -> bool:
+        # The health entity itself must remain visible on failed refreshes.
+        return True
+
+    @property
+    def is_on(self) -> bool:
+        return bool(self.coordinator.last_update_success)

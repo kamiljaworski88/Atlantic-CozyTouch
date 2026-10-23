@@ -38,6 +38,26 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(data[0]["values"], {24: 21.0, 51: True, 119: 5.5})
         self.assertNotIn(123456789, data[0]["values"])
 
+    def test_inactive_temperature_sentinel_and_normal_values(self):
+        for cap in (109, 110, 111, 117, 118, 119):
+            for invalid in (-273.15, "-273,2", -327.68):
+                self.assertIsNone(module.normalize_value(cap, invalid))
+            self.assertEqual(module.normalize_value(cap, 33.3), 33.3)
+        self.assertEqual(module.normalize_value(119, -55), -55.0)
+        self.assertIsNone(module.normalize_value(109, 999))
+
+    def test_capability_inventory_keeps_ids_not_unmapped_values(self):
+        payload = [{"devices": [{"deviceId": 55, "name": "Test", "capabilities": [
+            {"capabilityId": 109, "value": -273.15},
+            {"capabilityId": 1234, "value": "PRIVATE_NEVER_SAVE_THIS_VALUE"},
+            {"capabilityId": 24, "value": 21},
+        ]}]}]
+        device = module.extract_devices(payload)[0]
+        self.assertEqual(device["reported_capability_ids"], [24, 109, 1234])
+        self.assertIsNone(device["values"][109])
+        self.assertNotIn(1234, device["values"])
+        self.assertNotIn("PRIVATE_NEVER_SAVE_THIS_VALUE", str(device))
+
     def test_energy_in_watt_hours_converted_to_kwh(self):
         self.assertEqual(module.normalize_value(44, 12345), 12.345)
         self.assertEqual(module.normalize_value(45, "500"), 0.5)

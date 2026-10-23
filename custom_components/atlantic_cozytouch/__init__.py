@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import timedelta
+from datetime import UTC, datetime, timedelta
 import logging
 
 from homeassistant.config_entries import ConfigEntry
@@ -29,7 +29,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     async def update():
         try:
-            return await client.async_read()
+            devices = await client.async_read()
+            coordinator.atlantic_last_success_at = datetime.now(UTC)
+            return devices
         except AtlanticAuthError as exc:
             raise ConfigEntryAuthFailed("Atlantic rejected credentials") from exc
         except AtlanticError as exc:
@@ -42,6 +44,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_method=update,
         update_interval=timedelta(seconds=POLL_SECONDS),
     )
+    coordinator.atlantic_last_success_at = None
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

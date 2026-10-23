@@ -42,6 +42,7 @@ jobs:
               "custom_components.atlantic_cozytouch.config_flow",
               "custom_components.atlantic_cozytouch.sensor",
               "custom_components.atlantic_cozytouch.binary_sensor",
+              "custom_components.atlantic_cozytouch.diagnostics",
           ):
               importlib.import_module(path)
               print("OK", path)
