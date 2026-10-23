@@ -61,6 +61,114 @@ class TestConsumptionProbe(unittest.TestCase):
                       [{"consumptionPeriods": [{}] * 3661}], [{}] * 257):
             self.assertEqual(module.summarize_consumptions(value)["state"], "nieprawidlowa_odpowiedz")
 
+    def test_two_series_are_not_assumed_to_be_co_and_cwu(self):
+        from datetime import datetime, timezone
+        day1 = 1726358400
+        day2 = day1 + 86400
+        payload = [
+            {
+                "category": 3, "type": 1, "unit": 1,
+                "serialNumber": "PRIVATE_SERIAL_ABC",
+                "deviceId": "PRIVATE_DEVICE_X",
+                "consumptionPeriods": [
+                    {"date": day1, "mode": 1, "profil": 0,
+                     "consumedQuantity": 11.629, "producedQuantity": None,
+                     "cost": 99999.99},
+                    {"date": day1, "mode": 2, "profil": 0,
+                     "consumedQuantity": 0.3, "producedQuantity": None},
+                    {"date": day2, "mode": 1, "profil": 0,
+                     "consumedQuantity": 1.0, "producedQuantity": None},
+                ],
+            },
+            {
+                "category": 7, "type": 1, "unit": 1,
+                "deviceUrl": "PRIVATE_URL_X",
+                "consumptionPeriods": [
+                    {"date": day2, "mode": 2, "profil": 3,
+                     "consumedQuantity": 7.522, "producedQuantity": None},
+                ],
+            },
+        ]
+        out = module.summarize_consumptions(payload)
+        self.assertEqual(out["serie"], 2)
+        self.assertEqual(out["okresy_z_energia_pobrana"], 4)
+        self.assertEqual(out["okresy_z_energia_wyprodukowana"], 0)
+        self.assertFalse(out["cop_zweryfikowany"])
+        first, second = out["serie_szczegoly"]
+        self.assertEqual(first["kategoria_kod"], 3)
+        self.assertEqual(second["kategoria_kod"], 7)
+        self.assertEqual(first["przypisanie_co_cwu"], "niepotwierdzone")
+        self.assertEqual(second["przypisanie_co_cwu"], "niepotwierdzone")
+        self.assertEqual(first["tryby_kody"], [1, 2])
+        self.assertEqual(second["tryby_kody"], [2])
+        self.assertEqual(first["liczba_dni_utc"], 2)  # Three tariff records, two days.
+        self.assertEqual(second["liczba_dni_utc"], 1)
+        self.assertEqual(
+            first["data_od_utc"],
+            datetime.fromtimestamp(day1, tz=timezone.utc).date().isoformat(),
+        )
+        self.assertEqual(
+            first["data_do_utc"],
+            datetime.fromtimestamp(day2, tz=timezone.utc).date().isoformat(),
+        )
+        self.assertEqual(first["jednostka_wg_znanego_przykladu"], "kWh")
+        self.assertEqual(second["profile_kody"], [3])
+        for secret in ("PRIVATE", "11.629", "7.522", "99999.99", str(day1)):
+            self.assertNotIn(secret, str(out))
+
+    def test_zero_production_does_not_prove_any_heat_output(self):
+        out = module.summarize_consumptions([{
+            "type": 1, "unit": 1,
+            "consumptionPeriods": [
+                {"producedQuantity": 0, "consumedQuantity": 1},
+                {"producedQuantity": -20, "consumedQuantity": False},
+                {"producedQuantity": "500", "consumedQuantity": "12"},
+                {},
+            ],
+        }])
+        self.assertEqual(out["okresy_z_energia_wyprodukowana"], 1)
+        self.assertEqual(out["okresy_z_dodatnia_produkcja"], 0)
+        self.assertEqual(
+            out["serie_szczegoly"][0]["okresy_bez_liczbowej_produkcji"], 3
+        )
+        self.assertFalse(out["cop_zweryfikowany"])
+
+    def test_untrusted_codes_dates_and_output_sizes_are_bounded(self):
+        from datetime import datetime, timezone
+        payload = [{
+            "category": "PRIVATE_IDENTIFYING_CATEGORY",
+            "type": "1;PRIVATE",
+            "unit": 999999999,
+            "serialNumber": "PRIVATE_SERIAL_X",
+            "consumptionPeriods": [
+                {"date": "2026-10-23", "mode": "PRIVATE_MODE", "profil": True,
+                 "consumedQuantity": 99},
+                {"date": 10**30, "mode": 50000, "profil": -1,
+                 "consumedQuantity": 20},
+            ],
+        }]
+        out = module.summarize_consumptions(payload)
+        item = out["serie_szczegoly"][0]
+        self.assertIsNone(item["kategoria_kod"])
+        self.assertIsNone(item["typ_kod"])
+        self.assertIsNone(item["jednostka_kod"])
+        self.assertEqual(item["data_od_utc"], None)
+        self.assertEqual(item["nieprawidlowe_daty"], 2)
+        self.assertEqual(item["tryby_kody"], [])
+        self.assertEqual(item["profile_kody"], [])
+        self.assertNotIn("PRIVATE", str(out))
+        many = module.summarize_consumptions([
+            {"type": 1, "unit": 1, "consumptionPeriods": []} for _ in range(100)
+        ])
+        self.assertEqual(many["serie"], 100)
+        self.assertEqual(len(many["serie_szczegoly"]), 12)
+        self.assertEqual(many["serie_pominiete_w_szczegolach"], 88)
+        from datetime import timedelta
+        self.assertEqual(
+            module._utc_day(int(datetime(2026, 10, 23, tzinfo=timezone.utc).timestamp())),
+            "2026-10-23",
+        )
+
     def test_energy_support_mask_distinguishes_electricity_and_heat(self):
         devices = [{
             "reported_capability_ids": [164],
