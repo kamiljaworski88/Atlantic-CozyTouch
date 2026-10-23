@@ -7,6 +7,7 @@ from homeassistant.helpers.entity import DeviceInfo, EntityCategory
 from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN
+from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import new_capabilities, inventory_summary
 from .readings import CAPABILITIES
 
@@ -14,6 +15,7 @@ from .readings import CAPABILITIES
 async def async_setup_entry(hass, entry, async_add_entities):
     coordinator = hass.data[DOMAIN][entry.entry_id]
     seen: set[tuple[str, int]] = set()
+    seen_derived: set[tuple[str, str]] = set()
 
     def add_new() -> None:
         discovered = new_capabilities(coordinator.data or [], kind="sensor", seen=seen)
@@ -21,6 +23,17 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for device, cap_id in discovered:
             seen.add((device["id"], cap_id))
             entities.append(AtlanticReadOnlySensor(coordinator, device, cap_id))
+        for device in coordinator.data or []:
+            reported = set(device.get("reported_capability_ids", []))
+            if not reported.intersection({24, 27, 51, 72}):
+                continue
+            for metric, info in COMPRESSOR_DERIVED_SPECS.items():
+                if not info.required_capabilities.issubset(reported):
+                    continue
+                identity = (device["id"], metric)
+                if identity not in seen_derived:
+                    seen_derived.add(identity)
+                    entities.append(AtlanticCompressorDerivedSensor(coordinator, device, metric))
         if entities:
             async_add_entities(entities)
 
@@ -124,3 +137,36 @@ class AtlanticCapabilityInventorySensor(CoordinatorEntity, SensorEntity):
             "unmapped_capabilities": summary["unmapped_count"],
             "devices": summary["device_count"],
         }
+
+
+class AtlanticCompressorDerivedSensor(CoordinatorEntity, SensorEntity):
+    """Calculated from counters reported by the same device; no commands."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, device: dict, metric: str) -> None:
+        super().__init__(coordinator)
+        self._device_id = device["id"]
+        self._metric = metric
+        spec = COMPRESSOR_DERIVED_SPECS[metric]
+        self._attr_name = spec.label
+        self._attr_unique_id = f"{DOMAIN}_{self._device_id}_compressor_{metric}"
+        self._attr_native_unit_of_measurement = spec.unit
+        self._attr_device_info = DeviceInfo(
+            identifiers={(DOMAIN, self._device_id)},
+            name=device["name"],
+            manufacturer="Atlantic",
+        )
+        if spec.category == "duration":
+            self._attr_device_class = SensorDeviceClass.DURATION
+        self._attr_state_class = (
+            SensorStateClass.TOTAL_INCREASING
+            if spec.cumulative
+            else SensorStateClass.MEASUREMENT
+        )
+
+    @property
+    def native_value(self):
+        monitor = self.coordinator.atlantic_compressor
+        return monitor.metrics.get(self._device_id, {}).get(self._metric)

@@ -14,6 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
 from .const import DOMAIN, POLL_SECONDS
+from .compressor import CompressorMonitor
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -27,14 +28,20 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         async_get_clientsession(hass), entry.data["username"], entry.data["password"]
     )
 
+    compressor_monitor = CompressorMonitor()
+
     async def update():
         try:
             devices = await client.async_read()
-            coordinator.atlantic_last_success_at = datetime.now(UTC)
+            observed_at = datetime.now(UTC)
+            compressor_monitor.ingest(devices, observed_at)
+            coordinator.atlantic_last_success_at = observed_at
             return devices
         except AtlanticAuthError as exc:
+            compressor_monitor.invalidate()
             raise ConfigEntryAuthFailed("Atlantic rejected credentials") from exc
         except AtlanticError as exc:
+            compressor_monitor.invalidate()
             raise UpdateFailed("Atlantic could not be polled") from exc
 
     coordinator = DataUpdateCoordinator(
@@ -45,6 +52,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=POLL_SECONDS),
     )
     coordinator.atlantic_last_success_at = None
+    coordinator.atlantic_compressor = compressor_monitor
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
