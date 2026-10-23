@@ -134,6 +134,32 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(classify("11581.0"), "valid")
         self.assertEqual(classify("6,571"), "valid")
 
+    def test_provisional_energy_wh_conversion_is_guarded(self):
+        convert = module.provisional_energy_kwh
+        self.assertEqual(convert(57, 11629), 11.629)
+        self.assertEqual(convert(59, 7126), 7.126)
+        self.assertEqual(convert(57, 0), 0.0)
+        self.assertIsNone(convert(60, 11629))
+        for bad in (-1, float("nan"), float("inf"), True, "11629", None):
+            self.assertIsNone(convert(57, bad))
+        for cap in (57, 59):
+            self.assertIsNone(module.CAPABILITIES[cap].unit)
+            self.assertFalse(module.CAPABILITIES[cap].publish_statistics)
+
+    def test_extra_read_only_setpoints_and_heat_curve(self):
+        for cap in (22, 23, 39, 40, 41, 42, 43, 192, 193, 194, 195, 254):
+            self.assertEqual(module.normalize_value(cap, "37.5"), 37.5)
+            self.assertIsNone(module.normalize_value(cap, -273.1))
+            self.assertEqual(module.CAPABILITIES[cap].unit, "°C")
+        self.assertEqual(module.normalize_value(65, 1), "Włączony")
+        self.assertEqual(module.normalize_value(66, 0), "Wyłączona")
+        self.assertEqual(module.normalize_value(68, 3), "Włączona")
+        self.assertEqual(module.normalize_value(70, 1), "Wyłączona")
+        self.assertIsNone(module.normalize_value(70, 99))
+        self.assertTrue(module.normalize_value(317, 1))
+        self.assertEqual(module.normalize_value(164, 18), 18.0)
+        self.assertFalse(module.CAPABILITIES[164].publish_statistics)
+
     def test_parser_discards_invalid_id60_contents(self):
         payload = [{"devices": [{
             "deviceId": "device",
