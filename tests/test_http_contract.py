@@ -59,11 +59,12 @@ class Reply:
 class Session:
     """Records HTTP operations; never connects to a real server."""
 
-    def __init__(self, *, login_status=200, read_status=200, headers=None, setup_payload=None):
+    def __init__(self, *, login_status=200, read_status=200, headers=None, setup_payload=None, token_payload=None):
         self.calls = []
         self.login_status = login_status
         self.read_status = read_status
         self.headers = headers or {}
+        self.token_payload = token_payload if token_payload is not None else {"access_token": "FAKE_UNIT_TEST_TOKEN", "expires_in": 3600}
         self.setup_payload = setup_payload if setup_payload is not None else [{
             "devices": [{
                 "deviceId": 9,
@@ -80,7 +81,7 @@ class Session:
         self.calls.append(("POST", url, kwargs))
         return Reply(
             self.login_status,
-            {"access_token": "FAKE_UNIT_TEST_TOKEN", "expires_in": 3600},
+            self.token_payload,
             headers=self.headers,
         )
 
@@ -177,6 +178,13 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AtlanticRateLimited):
             await client.async_read()
         self.assertEqual(len(session.calls), 1)
+
+    async def test_invalid_grant_in_http_200_is_an_auth_error(self):
+        session = Session(token_payload={"error": "invalid_grant"})
+        client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+        with self.assertRaises(AtlanticAuthError):
+            await client.async_read()
+        self.assertEqual([x[0] for x in session.calls], ["POST"])
 
     async def test_invalid_login_is_not_retried(self):
         session = Session(login_status=401)

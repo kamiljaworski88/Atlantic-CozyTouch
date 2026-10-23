@@ -19,6 +19,9 @@ class CapabilitySpec:
     diagnostic: bool = False
 
 
+MAX_DEVICES_PER_ACCOUNT = 128
+MAX_CAPABILITIES_PER_DEVICE = 1024
+
 CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
     24: CapabilitySpec("Uruchomienia sprężarki", cumulative=True, diagnostic=True),
@@ -85,18 +88,25 @@ def extract_devices(payload: object) -> list[dict]:
     devices = response.get("devices")
     if not isinstance(devices, list):
         raise ValueError("Atlantic setup has no devices list")
+    if len(devices) > MAX_DEVICES_PER_ACCOUNT:
+        raise ValueError("Atlantic setup exceeds allowed device count")
 
     result: list[dict] = []
     for item in devices:
         if not isinstance(item, dict):
             continue
         device_id = item.get("deviceId")
-        if not isinstance(device_id, (str, int)) or not str(device_id):
+        if isinstance(device_id, bool) or not isinstance(device_id, (str, int)):
+            continue
+        safe_id = str(device_id).strip()
+        if not safe_id or len(safe_id) > 128 or not safe_id.isprintable():
             continue
 
         values: dict[int, float | str | bool | None] = {}
         raw_capabilities = item.get("capabilities", [])
         if isinstance(raw_capabilities, list):
+            if len(raw_capabilities) > MAX_CAPABILITIES_PER_DEVICE:
+                raise ValueError("Atlantic device exceeds allowed capability count")
             for cap in raw_capabilities:
                 if not isinstance(cap, dict):
                     continue
@@ -110,7 +120,7 @@ def extract_devices(payload: object) -> list[dict]:
         if values:
             result.append(
                 {
-                    "id": str(device_id),
+                    "id": safe_id,
                     "name": str(item.get("name") or "Atlantic")[:100],
                     "values": values,
                 }

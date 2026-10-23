@@ -134,6 +134,8 @@ class AtlanticReadOnlyClient:
             # No URL, password, token or raw HTTP body is logged.
             raise AtlanticError("Atlantic login connection failed") from None
 
+        if isinstance(body, dict) and body.get("error") == "invalid_grant":
+            raise AtlanticAuthError("Atlantic login rejected")
         if not isinstance(body, dict) or not isinstance(body.get("access_token"), str) or not body["access_token"]:
             raise AtlanticError("Atlantic returned no access token")
 

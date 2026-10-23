@@ -56,6 +56,22 @@ class TestReadings(unittest.TestCase):
         with self.assertRaises(ValueError):
             module.extract_devices({"devices": []})
 
+    def test_does_not_process_abnormally_large_api_response(self):
+        with self.assertRaises(ValueError):
+            module.extract_devices([{"devices": [{"deviceId": i} for i in range(129)]}])
+        with self.assertRaises(ValueError):
+            module.extract_devices([{"devices": [{"deviceId": 7, "capabilities": [
+                {"capabilityId": 24, "value": 1} for _ in range(1025)
+            ]}]}])
+
+    def test_rejects_malformed_device_ids(self):
+        result = module.extract_devices([{"devices": [
+            {"deviceId": chr(0) + "bad", "capabilities": [{"capabilityId": 24, "value": 1}]},
+            {"deviceId": True, "capabilities": [{"capabilityId": 24, "value": 1}]},
+            {"deviceId": 7, "capabilities": [{"capabilityId": 24, "value": 1}]},
+        ]}])
+        self.assertEqual([dev["id"] for dev in result], ["7"])
+
     def test_has_sought_diagnostics(self):
         for cap_id in (24, 27, 51, 72):
             self.assertIn(cap_id, module.CAPABILITIES)
