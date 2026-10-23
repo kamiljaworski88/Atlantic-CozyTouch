@@ -6,11 +6,11 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 
 ## Bezpieczeństwo
 
-- Brak sterowania pompą: **nie ma** encji typu \`climate\`, \`number\`, \`switch\`, \`select\`, \`button\` ani usług zapisujących ustawienia.
-- Warstwa sieciowa dopuszcza jedynie \`POST https://apis.groupe-atlantic.com/users/token\` (logowanie) oraz \`GET https://apis.groupe-atlantic.com/magellan/cozytouch/setupviewv2\` (odczyt).
+- Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
+- Warstwa sieciowa dopuszcza jedynie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz `GET https://apis.groupe-atlantic.com/magellan/cozytouch/setupviewv2` (odczyt).
 - Bez serwerów pośredniczących autora integracji, analityki i eksportu danych. **Integracja wymaga chmury producenta**, a nie działa lokalnie/offline.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
-- Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń \`.storage\` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
+- Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
 
 ## Co odczytuje?
@@ -36,12 +36,12 @@ Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla A
 ## Instalacja (dopiero po przeglądzie PR)
 
 1. Zrób kopię zapasową Home Assistant (testowana docelowa wersja: 2026.10.x).
-2. Zainstaluj jako **niestandardowe repozytorium integracji HACS**: \`https://github.com/kamiljaworski88/Atlantic-CozyTouch\` (prywatne repo może wymagać dodatkowego dostępu HACS).
-3. Po udostępnieniu wydania na \`main\`, dodaj integrację **Atlantic CozyTouch Read-Only** przez *Ustawienia → Urządzenia i usługi*.
+2. Zainstaluj jako **niestandardowe repozytorium integracji HACS**: `https://github.com/kamiljaworski88/Atlantic-CozyTouch` (prywatne repo może wymagać dodatkowego dostępu HACS).
+3. Po udostępnieniu wydania na `main`, dodaj integrację **Atlantic CozyTouch Read-Only** przez *Ustawienia → Urządzenia i usługi*.
 4. Podaj dane do konta Atlantic Cozytouch (nie podawaj ich w issues, PR-ach ani czacie).
 5. Sprawdź encje oraz brak usług sterujących.
 
-Alternatywnie po zatwierdzeniu kodu skopiuj \`custom_components/atlantic_cozytouch\` do katalogu \`config/custom_components/\` i uruchom ponownie HA.
+Alternatywnie po zatwierdzeniu kodu skopiuj `custom_components/atlantic_cozytouch` do katalogu `config/custom_components/` i uruchom ponownie HA.
 
 ## Zakres i ograniczenia v0.1.0
 
@@ -53,11 +53,11 @@ Alternatywnie po zatwierdzeniu kodu skopiuj \`custom_components/atlantic_cozytou
 
 ## Niezależna implementacja i licencja
 
-Kod został napisany od podstaw dla projektu Atlantic-CozyTouch, bez kopiowania implementacji \`gduteil/cozytouch\`. Nazwy identyfikatorów i adresy interfejsu służą do zapewnienia interoperacyjności. Projekt nie jest powiązany z Atlantic. Kod własny na licencji MIT; zobacz [LICENSE](LICENSE).
+Kod został napisany od podstaw dla projektu Atlantic-CozyTouch, bez kopiowania implementacji `gduteil/cozytouch`. Nazwy identyfikatorów i adresy interfejsu służą do zapewnienia interoperacyjności. Projekt nie jest powiązany z Atlantic. Kod własny na licencji MIT; zobacz [LICENSE](LICENSE).
 
 ## Testy
 
-\`\`\`bash
+```bash
 python -m unittest discover -s tests -v
 python -m compileall -q custom_components tests
-\`\`\`
+```
