@@ -2,7 +2,7 @@
 
 ## Granica zaufania
 
-Home Assistant komunikuje się **bezpośrednio** z oficjalną usługą \`https://apis.groupe-atlantic.com\`. Nie ma dodatkowego serwera integracji. Połączenie jest szyfrowane TLS, a weryfikacja certyfikatów pozostaje domyślna.
+Home Assistant komunikuje się **bezpośrednio** z oficjalną usługą `https://apis.groupe-atlantic.com`. Nie ma dodatkowego serwera integracji. Połączenie jest szyfrowane TLS, a weryfikacja certyfikatów pozostaje domyślna.
 
 ## Reguły techniczne
 
@@ -30,10 +30,28 @@ Kod **nie implementuje** funkcji wysyłającej komendy sterujące. Brak też us�
 - Przegląd zmian PR i logów CI.
 - Kopia zapasowa Home Assistant.
 - Brak publikacji danych logowania, tokenów, numerów urządzenia w zgłoszeniach.
-- Weryfikacja, że encje mają tylko prefiksy \`sensor.\` i \`binary_sensor.\`.
+- Weryfikacja, że encje mają tylko prefiksy `sensor.` i `binary_sensor.`.
 - Monitorowanie dziennika HA po pierwszym uruchomieniu oraz pompy przez panel Atlantica.
 - Brak automatycznego aktualizowania integracji do nieprzejrzanych wersji.
 
 ## Pochodzenie kodu
 
 Projekt bazuje na obserwacji publicznie udokumentowanego zachowania interfejsu, ale nie kopiuje kodu źródłowego nieobjętego jawną licencją z repozytorium gduteil/cozytouch. Rozdział modułów i logika są niezależną implementacją.
+
+## Audyt rozszerzony — 23.10.2026
+
+### Rzeczywista granica HTTP
+- Centralny filtr `AtlanticReadOnlyClient._request` zezwala tylko na `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz `GET https://apis.groupe-atlantic.com/magellan/cozytouch/setupviewv2` (odczyt).
+- Nieprawidłowa metoda lub URL są odrzucane **przed** jakimkolwiek żądaniem.
+- Brak przekierowań HTTP, brak możliwości ustawienia `ssl=False` lub parametru proxy przez metodę żądania.
+- HTTP 429: wstrzymanie odczytu na 5–60 min zgodnie z `Retry-After`, z domyślną przerwą 15 min.
+- Ograniczenie przetwarzania do 128 urządzeń i 1024 parametrów na urządzenie; nieznane identyfikatory nie są publikowane.
+
+### Scenariusze testowe
+Testy bez połączenia z producentem obejmują: odmowę wysłania niedozwolonego `POST` do endpointu sterowania, odmowę komunikacji z obcym hostem, wymuszone przekierowanie, błędne logowanie, wygaśnięcie tokenu, HTTP 429, nieprawidłowe dane z chmury, ograniczenia rozmiaru odpowiedzi i poprawne jednostki energii. Dodatkowy workflow importuje komponent na oficjalnym obrazie HA 2026.10.2.
+
+### Ważne ograniczenia
+- Konto Atlantic **nie jest kontem read-only**. Token może mieć uprawnienia pozwalające na zapis, lecz ten kod nie wykonuje takich operacji. Każda późniejsza aktualizacja wymaga ponownego audytu.
+- Filtr działa na poziomie kodu integracji; nie jest zaporą sieciową i nie audytuje innych dodatków Home Assistant.
+- Integracja nie tworzy serwerów pośredniczących autora, ale sieć hosta/ISP może korzystać z własnej infrastruktury pośredniej.
+- Nie przeprowadzono jeszcze testów z rzeczywistą pompą ani niezależnego audytu penetracyjnego. Zielony CI nie dowodzi kompatybilności urządzenia.
