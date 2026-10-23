@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.3.0 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.4.0 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -36,6 +36,19 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Pierwszy odczyt po restarcie HA, długa luka, reset licznika i niewiarygodny przyrost → wartość `unknown`. Żadnych sztucznych startów.
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
+
+## v0.4.0 — telemetria energii i trybów (walidacja na urządzeniu)
+
+Po analizie diagnostyki Extensa S Duo XL 10 integracja rozpoznaje dodatkowo:
+- **91**: aktywny obieg CO / CWU (kody 1 / 3).
+- **153**: stan ogrzewania (wył. / ogrzewanie / chłodzenie).
+- **181**: wykonywany tryb usługi (nie jest to stan sprężarki).
+- **99**: binarny stan funkcji CWU (znaczenie zależy od modelu).
+- **380**: kod diagnostyczny jednostki zewnętrznej CESA (liczbowy, bez automatycznej interpretacji alarmu).
+- **57, 59, 60**: **surowe wskazania liczników energii** bez jednostek, klas energii i statystyk (do weryfikacji skalowania/znaczenia).
+- **112**: **surowy odczyt przepływu**, bez przypisywania L/min przed porównaniem z urządzeniem.
+
+Te sensory istnieją **tylko gdy Atlantic je raportuje** i pozostają diagnostyczne. Żadna surowa wartość energii nie jest kierowana do Energy Dashboard ani używana do obliczania COP. Nie dodaliśmy nowych żądań HTTP, komend sterujących ani ujawniania surowych wartości w pobieranym raporcie diagnostycznym. Zobacz [plan walidacji v0.4.0](docs/ENERGY_VALIDATION.md).
 
 ## Co odczytuje?
 

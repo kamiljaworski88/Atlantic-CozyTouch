@@ -24,6 +24,8 @@ Każdy etap ma osobne issue; funkcje powstają na gałęziach i wymagają testó
 - Diagnostyka nie wysyła danych poza HA i nie pokazuje sekretów.
 - Przed stabilnym wydaniem test z Alféa Extensa S Duo XL 10 oraz potwierdzenie dokładności odczytów.
 
-## Zakres aktualnego sprintu
+## Bieżąca walidacja produktu
 
-W gałęzi `feat/quality-and-capability-diagnostics-v0.1.1` przygotowujemy filtrowanie fałszywych temperatur, metadane połączenia oraz bezpieczny spis identyfikatorów capability. Rozszerzone odkrywanie urządzeń i interpretacja nowych parametrów pozostaje zakresem v0.2.0.
+v0.3.0: integracja dynamicznie wykrywa możliwości urządzeń. Raport Extensa S Duo XL 10 potwierdził **brak** standardowych ID sprężarki 24/27/51/72 przy tym odczycie. Nie wolno tworzyć sztucznych liczników sprężarki z pomp obiegowych.
+
+v0.4.0: diagnostyczne sondy wartości 57/59/60/112 i mapowanie trybów 91/153/181. Dopiero po porównaniu surowych danych z pomiarami i stabilności liczników można stworzyć narastające sensory kWh i włączyć je do Energy Dashboard. Bez kalibracji i wskazania jednostek nie uznajemy tej części roadmapy za zamkniętą.

@@ -77,7 +77,8 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
         elif spec.category == "duration":
             self._attr_device_class = SensorDeviceClass.DURATION
 
-        if spec.kind == "number":
+        # Unverified numeric values are diagnostic only, never part of HA energy stats.
+        if spec.kind == "number" and spec.publish_statistics:
             self._attr_state_class = (
                 SensorStateClass.TOTAL_INCREASING
                 if spec.cumulative
