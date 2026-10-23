@@ -46,13 +46,13 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Nie ma funkcji sterowania pompą ani nowych wywołań API.
 - Zobacz instrukcję [monitorowania sprężarki](docs/COMPRESSOR.md), w tym tworzenia statystyk dobowych przez Utility Meter w HA.
 
-## v0.4.3 — audyt kategorii i okresów energii (PR do akceptacji)
+## v0.4.3 — audyt kategorii i okresów energii (historia zmian)
 
 - Rozszerza **istniejący sensor** `Historia energii Atlantic · test API` o `serie_szczegoly`: anonimowe indeksy, kody `category/type/unit`, tryby i profile, liczbę dni, zakres dat UTC oraz informację o brakujących i dodatnich wartościach produkcji.
 - `type=1` / `unit=1` interpretujemy w diagnostyce jako energię elektryczną w kWh **tylko według schematu potwierdzonego na innym urządzeniu Atlantic**. **Nie przypisujemy automatycznie dwóch serii do CO i CWU**.
 - Wszystkie stare nazwy encji i atrybuty zostają, nie tworzymy nowych liczników w panelu Energia i nie liczymy COP; bez nowego ruchu HTTP ani sterowania pompą.
 - Raport JSON z diagnostyki ma format 5. Szczegóły są ograniczone do 12 serii, bez surowego zużycia, kwot, identyfikatorów konta/urządzenia ani tokenów.
-- [Audyt API, ograniczenia i procedura odbioru](docs/ENERGY_API_AUDIT_0_4_3.md). **Nie mergować do main bez osobnej akceptacji.**
+- [Audyt API, ograniczenia i procedura odbioru](docs/ENERGY_API_AUDIT_0_4_3.md). Zachowane mapowanie diagnostyczne, bez automatycznej klasyfikacji CO/CWU.
 
 ## v0.4.2 — ostrożny test endpointu historii energii
 
@@ -108,8 +108,8 @@ Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla A
 ## Instalacja (dopiero po przeglądzie PR)
 
 1. Zrób kopię zapasową Home Assistant (kontrola importu wykonana na 2026.10.2).
-2. **Wymaganie HACS:** standardowy HACS obsługuje tylko publiczne repozytoria GitHub. Dopóki `Atlantic-CozyTouch` jest prywatne, instalacja w HACS jako niestandardowe repozytorium nie będzie dostępna. Nie zmieniaj widoczności bez świadomej decyzji.
-3. Po udostępnieniu repozytorium jako publicznego: *HACS → ⋮ → Niestandardowe repozytoria → URL → Integracja → Dodaj*, a następnie zainstaluj **Atlantic CozyTouch Read-Only** z gałęzi `main`. Release nie jest wymagany, gdy HACS wykorzystuje gałąź domyślną.
+2. **HACS:** niestandardowe repozytorium musi być publicznie dostępne. Sprawdź aktualną widoczność repozytorium w GitHub przed dodaniem go w HACS; nie trzeba jej zmieniać dla wersji ręcznej.
+3. W HACS: *⋮ → Niestandardowe repozytoria → URL repozytorium → Integracja → Dodaj*, a następnie zainstaluj **Atlantic CozyTouch Read-Only** z `main` i ponownie uruchom Home Assistant.
 4. Uruchom ponownie HA, dodaj integrację w *Ustawienia → Urządzenia i usługi* i podaj dane konta Atlantic **tylko w lokalnym formularzu HA**.
 5. Zweryfikuj dostępne encje i brak usług sterujących. Kod pozostaje **testową wersją 0.5.0**, dopóki nie zostanie sprawdzony na rzeczywistym urządzeniu.
 
