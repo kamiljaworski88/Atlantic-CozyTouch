@@ -38,6 +38,16 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(data[0]["values"], {24: 21.0, 51: True, 119: 5.5})
         self.assertNotIn(123456789, data[0]["values"])
 
+    def test_energy_in_watt_hours_converted_to_kwh(self):
+        self.assertEqual(module.normalize_value(44, 12345), 12.345)
+        self.assertEqual(module.normalize_value(45, "500"), 0.5)
+        self.assertEqual(module.normalize_value(46, 0), 0.0)
+        for capability in (44, 45, 46):
+            spec = module.CAPABILITIES[capability]
+            self.assertEqual(spec.unit, "kWh")
+            self.assertEqual(spec.category, "energy")
+            self.assertTrue(spec.cumulative)
+
     def test_not_available_handled(self):
         self.assertIsNone(module.normalize_value(24, "---"))
         self.assertIsNone(module.normalize_value(51, "unrecognized"))
