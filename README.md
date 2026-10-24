@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.0 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.1 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.1 — dzienne zużycie energii CO/CWU (PR #18)
+
+- Cztery nowe sensory: energia elektryczna **CO i CWU dzisiaj** oraz **CO i CWU wczoraj**, liczone według dni UTC. Korzystają z istniejącego endpointu historii Magellan.
+- Kody `category=1` (CO) i `category=2` (CWU), `type=1` i `unit=1` (kWh) potwierdzono na zbliżonej pompie Atlantic; przed użyciem w rozliczeniach konieczne jest porównanie z ekranem Twojej Extensa S Duo XL 10.
+- Sensor „dzisiaj” ma `device_class=energy`, `state_class=total` i reset przy północy UTC. „Wczoraj” to historyczny odczyt bez klasy statystyk; atrybut ostatnich 7 dni nie odtwarza dawnych danych w Recorder.
+- Parser sprawdza jednostki, taryfy i duplikaty. Brak pomiaru nie staje się zerem. Nie zmieniamy istniejących encji, diagnostycznego panelu COP ani funkcji read-only.
+- COP **nadal nie jest obliczany** — nie ma wiarygodnego pomiaru energii cieplnej w odpowiedzi API.
+- [Instrukcja i granice walidacji](docs/DAILY_ENERGY_0_5_0.md).
 
 ## v0.5.0 — końcowy audyt energii (bez fikcyjnego COP)
 

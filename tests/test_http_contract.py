@@ -258,6 +258,50 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         with self.assertRaises(AtlanticError):
             client._request("POST", target)
 
+    async def test_daily_energy_payload_is_scrubbed_and_keeps_same_http_allowlist(self):
+        from datetime import datetime, timezone
+
+        day = int(datetime(2026, 10, 23, tzinfo=timezone.utc).timestamp())
+        session = ConsumptionSession(consumption_payload=[
+            {"category": 1, "type": 1, "unit": 1, "serialNumber": "PRIVATE_ABC",
+             "consumptionPeriods": [{"date": day, "mode": 0,
+                                     "consumedQuantity": 2.35, "cost": 99999}]},
+            {"category": 2, "type": 1, "unit": 1, "deviceId": "PRIVATE_DEVICE",
+             "consumptionPeriods": [{"date": day, "mode": 0,
+                                     "consumedQuantity": 1.4}]},
+        ])
+        client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+        await client.async_read()
+        await client.async_probe_consumptions()
+        self.assertEqual(client.energy_daily, {
+            1: {"2026-10-23": 2.35},
+            2: {"2026-10-23": 1.4},
+        })
+        self.assertNotIn("PRIVATE", str(client.energy_daily))
+        self.assertNotIn("2.35", str(client.consumption_summary))
+        self.assertNotIn("99999", str(client.consumption_summary))
+        self.assertEqual(len(session.calls), 3)
+        await client.async_probe_consumptions()
+        self.assertEqual(len(session.calls), 3)
+
+    async def test_change_of_setup_erases_previous_account_energy(self):
+        from datetime import datetime, timezone
+
+        day = int(datetime(2026, 10, 23, tzinfo=timezone.utc).timestamp())
+        session = ConsumptionSession(consumption_payload=[
+            {"category": 1, "type": 1, "unit": 1, "consumptionPeriods": [
+                {"date": day, "mode": 0, "consumedQuantity": 6.0}
+            ]},
+        ])
+        client = AtlanticReadOnlyClient(session, "test@example.invalid", "pass")
+        await client.async_read()
+        await client.async_probe_consumptions()
+        self.assertEqual(client.energy_daily[1]["2026-10-23"], 6.0)
+        session.setup_payload[0]["id"] = 456
+        await client.async_read()
+        self.assertEqual(client.energy_daily, {})
+        self.assertEqual(client.consumption_summary["state"], "nie_sprawdzono")
+
     async def test_unauthorized_or_missing_history_does_not_break_main_poll(self):
         for status, expected in ((403, "odmowa_dostepu"),
                                  (404, "brak_endpointu"),

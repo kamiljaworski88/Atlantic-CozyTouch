@@ -21,6 +21,7 @@ from .const import (
 )
 from .readings import extract_devices
 from .consumption_probe import parse_setup_id, summarize_consumptions
+from .energy_daily import extract_electricity_days
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -62,6 +63,7 @@ class AtlanticReadOnlyClient:
         self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
         self._consumption_disabled = False
         self.consumption_summary: dict = {"state": "nie_sprawdzono"}
+        self.energy_daily: dict[int, dict[str, float]] = {}
 
     def _request(self, method: str, url: str, **kwargs):
         """Reject all methods/routes except vendor login and snapshot read.
@@ -216,6 +218,7 @@ class AtlanticReadOnlyClient:
             self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
             self._consumption_disabled = False
             self.consumption_summary = {"state": "nie_sprawdzono"}
+            self.energy_daily = {}  # Never mix accounts/setup IDs.
         return devices
 
     async def async_probe_consumptions(self) -> None:
@@ -259,7 +262,13 @@ class AtlanticReadOnlyClient:
                     self.consumption_summary = {"state": "blad_http"}
                     return
                 payload = await response.json()
-                self.consumption_summary = summarize_consumptions(payload)
+                summary = summarize_consumptions(payload)
+                self.energy_daily = (
+                    extract_electricity_days(payload)
+                    if summary.get("state") in ("dostepna", "brak_danych")
+                    else {}
+                )
+                self.consumption_summary = summary
         except AtlanticRateLimited:
             self.consumption_summary = {"state": "limit_zapytan"}
         except (aiohttp.ClientError, TimeoutError, ValueError, TypeError, OverflowError, AtlanticError):

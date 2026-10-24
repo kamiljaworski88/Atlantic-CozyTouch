@@ -45,6 +45,7 @@ jobs:
               "custom_components.atlantic_cozytouch.diagnostics",
               "custom_components.atlantic_cozytouch.energy_validation",
               "custom_components.atlantic_cozytouch.energy_preview",
+              "custom_components.atlantic_cozytouch.energy_daily",
           ):
               importlib.import_module(path)
               print("OK", path)
