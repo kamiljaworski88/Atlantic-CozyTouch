@@ -1,0 +1,123 @@
+# Atlantic Alféa Extensa S Duo XL 10 · dashboard bez sterowania
+# Wklej cały blok jako kartę Lovelace w trybie YAML.
+# Wymaga kart Mushroom. Sprawdź entity_id w Narzędzia deweloperskie -> Stany:
+# - sensora historii z integracji (bez przypisanego urządzenia)
+# - eksperymentalnych sensorów ID57/59 (domyślnie diagnostyczne)
+# Żaden z tych sensorów eksperymentalnych nie jest licznikiem HA Energia.
+
+type: vertical-stack
+cards:
+  - type: custom:mushroom-title-card
+    title: "♨️ Atlantic · energia i sprawność"
+    subtitle: "Extensa S Duo XL 10 · odczyt bez sterowania"
+
+  - type: markdown
+    content: >-
+      **Stan walidacji:** odczyty ID 57 i 59 są przeliczone z surowych wartości
+      przy **hipotezie Wh / 1000**, ale ich przypisanie do CO/CWU i zakres
+      czasu nie są jeszcze potwierdzone. Poniższe kWh służą wyłącznie do
+      porównania ze sterownikiem; **nie dodawaj ich do panelu Energia HA**.
+
+  - type: grid
+    columns: 2
+    square: false
+    cards:
+      - type: custom:mushroom-template-card
+        entity: sensor.alfea_extensa_s_hipoteza_energii_co_id_57
+        primary: >-
+          {% set v = states(entity) %}
+          {{ (v | float | round(3) | string) ~ " kWh" if is_number(v)
+             else "Brak odczytu" }}
+        secondary: "CO · hipoteza ID 57"
+        icon: mdi:radiator
+        color: amber
+        vertical: true
+        tap_action:
+          action: more-info
+      - type: custom:mushroom-template-card
+        entity: sensor.alfea_extensa_s_hipoteza_energii_cwu_id_59
+        primary: >-
+          {% set v = states(entity) %}
+          {{ (v | float | round(3) | string) ~ " kWh" if is_number(v)
+             else "Brak odczytu" }}
+        secondary: "CWU · hipoteza ID 59"
+        icon: mdi:water-boiler
+        color: cyan
+        vertical: true
+        tap_action:
+          action: more-info
+
+  - type: custom:mushroom-template-card
+    entity: sensor.cop_atlantic_gotowosc_danych
+    primary: >-
+      {% set state_map = {
+        "brak_danych_energii_cieplnej": "COP: brak danych cieplnych w API",
+        "produkcja_zero_lub_brak_danych": "COP: produkcja bez potwierdzenia",
+        "produkcja_do_weryfikacji": "COP: produkcja do weryfikacji",
+        "historia_niedostepna": "COP: historia niedostępna",
+        "nie_sprawdzono": "COP: oczekiwanie na historię",
+        "brak_danych_historii": "COP: brak historii"
+      } %}
+      {{ state_map.get(states(entity), "COP: brak zweryfikowanego odczytu") }}
+    secondary: "Stan danych · nie jest to pomiar COP"
+    icon: mdi:gauge
+    color: >-
+      {{ "green" if is_state(entity, "produkcja_do_weryfikacji") else "orange" }}
+    tap_action:
+      action: more-info
+
+  - type: custom:mushroom-title-card
+    title: "📊 Wskazania i historia"
+    subtitle: "Bez naliczania statystyk energii"
+
+  - type: history-graph
+    title: "Surowe liczniki Atlantic · 24 godziny"
+    hours_to_show: 24
+    entities:
+      - entity: sensor.alfea_extensa_s_wskazanie_energii_id_57_surowe
+        name: "ID 57"
+      - entity: sensor.alfea_extensa_s_wskazanie_energii_id_59_surowe
+        name: "ID 59"
+
+  - type: entities
+    title: "Weryfikacja źródeł energii"
+    show_header_toggle: false
+    entities:
+      - entity: sensor.historia_energii_atlantic_test_api
+        name: "Historia energii z chmury"
+      - entity: sensor.alfea_extensa_s_mozliwosci_pomiaru_energii_id_164
+        name: "Możliwości energetyczne ID 164"
+      - entity: sensor.alfea_extensa_s_wskazanie_energii_id_60_surowe
+        name: "ID 60 · możliwy brak danych"
+      - entity: sensor.alfea_extensa_s_diagnostyka_wskazania_id_60
+        name: "Status ID 60"
+
+  - type: custom:mushroom-title-card
+    title: "🛠️ Praca i diagnostyka"
+    subtitle: "Parametry zgłaszane przez Atlantic"
+
+  - type: entities
+    show_header_toggle: false
+    entities:
+      - entity: sensor.alfea_extensa_s_aktywny_obieg_co_cwu_id_91
+        name: "Aktywny obieg"
+      - entity: sensor.alfea_extensa_s_modulacja_sprezarki
+        name: "Modulacja sprężarki"
+      - entity: binary_sensor.alfea_extensa_s_sprezarka_pracuje
+        name: "Sprężarka pracuje"
+      - entity: sensor.alfea_extensa_s_temperatura_obiegu
+        name: "Temperatura CO"
+      - entity: sensor.alfea_extensa_s_temperatura_cwu
+        name: "Temperatura CWU"
+      - entity: sensor.alfea_extensa_s_temperatura_zewnetrzna
+        name: "Temperatura zewnętrzna"
+      - entity: sensor.alfea_extensa_s_cisnienie_wody
+        name: "Ciśnienie instalacji"
+      - entity: sensor.alfea_extensa_s_odczyt_przeplywu_id_112_surowy
+        name: "Przepływ ID 112 · bez potwierdzonej jednostki"
+
+  - type: markdown
+    content: >-
+      **COP rzeczywisty** będzie dostępny dopiero po potwierdzeniu
+      energii cieplnej i elektrycznej dla tego samego okresu.
+      Aktualny brak COP nie oznacza awarii pompy.

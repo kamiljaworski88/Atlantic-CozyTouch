@@ -1,7 +1,7 @@
-"""Atlantic HTTP client with an explicit two-operation allowlist.
+"""Atlantic HTTP client with a strict, read-only operation allowlist.
 
 No operation can mutate the device: POST is permitted only for OAuth login,
-and GET only for reading the vendor's setup snapshot.
+and GET only for reading setup snapshots and consumption history.
 """
 
 from __future__ import annotations
@@ -63,7 +63,6 @@ class AtlanticReadOnlyClient:
         self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
         self._consumption_disabled = False
         self.consumption_summary: dict = {"state": "nie_sprawdzono"}
-        # Only dates + verified-shape electricity kWh, never unredacted JSON.
         self.energy_daily: dict[int, dict[str, float]] = {}
 
     def _request(self, method: str, url: str, **kwargs):
@@ -219,7 +218,7 @@ class AtlanticReadOnlyClient:
             self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
             self._consumption_disabled = False
             self.consumption_summary = {"state": "nie_sprawdzono"}
-            self.energy_daily = {}  # Never mix installations/accounts.
+            self.energy_daily = {}  # Never mix accounts/setup IDs.
         return devices
 
     async def async_probe_consumptions(self) -> None:
@@ -264,8 +263,6 @@ class AtlanticReadOnlyClient:
                     return
                 payload = await response.json()
                 summary = summarize_consumptions(payload)
-                # The electricity parser retains ONLY kWh and UTC day for
-                # the two known categories. No raw response escapes here.
                 self.energy_daily = (
                     extract_electricity_days(payload)
                     if summary.get("state") in ("dostepna", "brak_danych")
@@ -274,6 +271,6 @@ class AtlanticReadOnlyClient:
                 self.consumption_summary = summary
         except AtlanticRateLimited:
             self.consumption_summary = {"state": "limit_zapytan"}
-        except (aiohttp.ClientError, TimeoutError, ValueError):
+        except (aiohttp.ClientError, TimeoutError, ValueError, TypeError, OverflowError, AtlanticError):
             self.consumption_summary = {"state": "blad_polaczenia"}
 
