@@ -24,6 +24,7 @@ from .discovery import compressor_host_devices
 from .consumption_probe import parse_setup_id, summarize_consumptions
 from .energy_daily import extract_electricity_days
 from .monthly_energy_probe import monthly_energy_shape
+from .heat_production_probe import summarize_production_candidates
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -408,6 +409,12 @@ class AtlanticReadOnlyClient:
                         if type(d.get("kategoria_kod")) is int
                     }),
                 }
+                if period == "monthly" and details.get("state") == "dostepna":
+                    # Same already-fetched response, never another HTTP call.
+                    # All numeric candidates are explicitly UNVERIFIED heat.
+                    summaries[period]["audyt_surowych_kandydatow"] = (
+                        summarize_production_candidates(payload)
+                    )
             except (AtlanticRateLimited, aiohttp.ClientError, TimeoutError,
                     ValueError, TypeError, OverflowError, AtlanticError):
                 summaries[period] = {"state": "blad_polaczenia"}
@@ -625,6 +632,10 @@ class AtlanticReadOnlyClient:
                     return
                 payload = await response.json()
             self.monthly_energy_summary = monthly_energy_shape(payload)
+            if self.monthly_energy_summary.get("state") == "dostepna":
+                self.monthly_energy_summary["audyt_surowych_kandydatow"] = (
+                    summarize_production_candidates(payload)
+                )
         except AtlanticRateLimited:
             self.monthly_energy_summary = {"state": "limit_zapytan"}
         except (aiohttp.ClientError, TimeoutError, TypeError, ValueError,
