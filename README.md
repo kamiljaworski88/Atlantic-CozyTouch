@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.9 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.10 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,18 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.10 — szacunkowy COP po zgodzie na połączenie dwóch modułów
+
+- Rozwiązanie problemu `niepotwierdzone_powiazanie_obiegu` z pompą **Alféa Extensa S Duo XL 10 WiFi**: chmura Atlantic potrafi umieścić `57/59/91/112` (energia, obieg, przepływ) na logicznym interfejsie, a `109/116` (temperatury) na module generatora.
+- **Ustawienie użytkownika — domyślnie WYŁĄCZONE.** Po przeglądzie konfiguracji instalacji w Home Assistant otwórz **Ustawienia → Urządzenia i usługi → Atlantic CozyTouch → Konfiguruj/Opcje**, zaznacz **„Włącz eksperymentalny COP między jedyną parą modułów”**, zapisz. Integracja przeładuje się automatycznie. Jeżeli nie ma takiej opcji, sprawdź, czy zainstalowana jest wersja 0.5.10 i ponownie uruchom HA.
+- Łączenie następuje tylko, gdy istnieje **dokładnie jeden** moduł interfejsu `57/59/91/112` oraz **dokładnie jeden** generator `109/116`. Jest to założenie użytkownika, **nie dowód** fizycznego połączenia obiegów. Pozostałe zabezpieczenia danych pozostają aktywne; brak wyprodukowanej energii cieplnej w API wciąż uniemożliwia prawdziwy COP miesięczny.
+- Poprawiono drugą blokadę: `modificationDate` **ID91 oznacza zmianę trybu**, więc nawet stary znacznik czasu jest dopuszczalny, gdy tryb pozostaje niezmienny. Zmiana znacznika w trakcie liczenia resetuje podstawę porównania.
+- Wymagany jest **aktywny przepływ i różnica temperatur zasilanie–powrót ≥1°C**, dopuszczalne znaczniki czasu hydrauliki i przyrost energii CO/CWU w okresie 2–20 min. Wynik `COP Atlantic · szacunkowy` to wyłącznie eksperyment na danych z chmury — nie wynik producenta i nie licznik do rozliczeń.
+- Jeśli pompa aktualnie nie grzeje (np. widoczne ~25,8°C i ~25,7°C, ΔT=0,1 K), wynik bieżącego COP jest **nieznany**, a status pokazuje `brak_aktywnego_grzania`. Nie podstawiamy wartości `0`.
+- Nowy sensor **„COP Atlantic · ostatni poprawny szacunek (12 h)”** zatrzymuje tylko wynik wyliczony wcześniej w ciągu ostatnich 12h; nie jest chwilowym COP ani zapisem długoterminowym i może być nieznany po restarcie.
+- Atrybuty statusu COP zawierają rodzaj topologii i bezpieczny wiek próbek `wiek_probek_s` bez surowych dat ani ID urządzeń. Pozwalają rozpoznać blokady `niespojne_czasy_probek`, `brak_przeplywu...`, `oczekiwanie_na_przyrost_energii`.
+- Bez nowych endpointów, serwerów pośredniczących, komend pompy, statystyk energetycznych i naruszenia istniejących unique_id. [Instrukcja odbioru COP 0.5.10](docs/COP_ESTIMATOR_0_5_10.md).
 
 ## v0.5.9 — zbiorczy audyt źródeł produkcji energii dla COP
 
