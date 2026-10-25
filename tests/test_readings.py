@@ -77,6 +77,21 @@ class TestReadings(unittest.TestCase):
             self.assertEqual(spec.category, "energy")
             self.assertTrue(spec.cumulative)
 
+    def test_compressor_modulation_timestamp_is_parsed_safely(self):
+        payload = [{"devices": [{
+            "deviceId": "pump",
+            "capabilities": [
+                {"capabilityId": 72, "value": "36", "modificationDate": 1792900000},
+                {"capabilityId": 51, "value": "1", "modificationDate": 1792900000},
+                {"capabilityId": 109, "value": "31", "modificationDate": "SECRET"},
+            ],
+        }]}]
+        device = module.extract_devices(payload)[0]
+        self.assertEqual(device["updated_at"][72], 1792900000)
+        self.assertEqual(device["updated_at"][51], 1792900000)
+        self.assertNotIn(109, device["updated_at"])
+        self.assertEqual(device["values"][51], True)
+
     def test_new_read_only_operating_modes(self):
         self.assertEqual(module.normalize_value(91, "1"), "CO")
         self.assertEqual(module.normalize_value(91, 3), "CWU")

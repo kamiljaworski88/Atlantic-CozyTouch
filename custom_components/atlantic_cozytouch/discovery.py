@@ -23,6 +23,21 @@ def new_capabilities(devices: list[dict], kind: str, seen: set[tuple[str, int]])
     return found
 
 
+def compressor_host_devices(devices: list[dict]) -> list[dict]:
+    """Identify the actual heat-pump component without relying on its name.
+
+    A compressor capability identifies it directly. On Extensa Magellan,
+    the CO/CWU circuit (91) and hydraulic flow (112) identify the heat-pump
+    device even when the cloud omits the compressor diagnostic capabilities.
+    """
+    result = []
+    for device in devices:
+        ids = set(device.get("reported_capability_ids", []))
+        if {91, 112}.issubset(ids) or bool(ids & {24, 27, 51, 72}):
+            result.append(device)
+    return result
+
+
 def redacted_inventory(devices: list[dict]) -> list[dict]:
     """Return ID lists only: no vendor values, names, IDs, serials or credentials."""
     result = []

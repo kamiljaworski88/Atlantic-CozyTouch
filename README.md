@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.2 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.3 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,26 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.3 — brakujące sensory sprężarki w Home Assistant
+
+- Dla urządzenia rozpoznanego na podstawie ID 91 + ID 112 lub
+  natywnej telemetrii sprężarki integracja rejestruje sensory:
+  **Uruchomienia sprężarki** (ID 24), **Czas pracy sprężarki** (ID 27),
+  **Modulacja sprężarki** (ID 72) i **Sprężarka pracuje** (ID 51).
+  Rejestruje też istniejące analizy czasu pracy i startów.
+- Gdy Atlantic nie zgłasza danych, encja istnieje, ale jej stan jest
+  **unknown**. Surowe wartości nie są domyślane z trybu ogrzewania ani
+  licznika energii. Atrybuty pokazują, które identyfikatory nie są
+  raportowane przez API.
+- Stan „Sprężarka pracuje” wykorzystuje najpierw natywny ID 51.
+  Tylko gdy ID 51 jest niedostępny, wolno wnioskować o stanie
+  ze **świeżego** ID 72 (modulacji). Nie wolno wyprowadzać
+  aktualnego stanu z liczników startów i godzin ani aktywnego obiegu.
+- Zachowane są dotychczasowe unikalne identyfikatory encji ID 24/27/51/72
+  i sensorów pochodnych; bez nowych endpointów, uprawnień i sterowania.
+- Nie jest gwarantowane, że chmura producenta udostępnia odczyty licznika
+  sprężarki, które widać na lokalnym sterowniku. Wtedy stan pozostaje unknown.
 
 ## v0.5.2 (projekt PR) — eksperymentalny COP hydrauliczny
 

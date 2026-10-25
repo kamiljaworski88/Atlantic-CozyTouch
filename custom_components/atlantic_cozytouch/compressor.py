@@ -51,6 +51,31 @@ def _seconds(value: object) -> float | None:
     return float(value)
 
 
+def compressor_operating_state(
+    values: dict, updated_at: dict, now: datetime
+) -> tuple[bool | None, str]:
+    """Current compressor state: direct ID51 or recent modulation ID72 only.
+
+    Start counters, runtime increments, active circuit and heating mode are NOT
+    evidence of its exact current on/off state. Unknown stays unknown.
+    """
+    direct = values.get(51)
+    if type(direct) is bool:
+        return direct, "bezposredni_odczyt_id_51"
+    modulation = values.get(72)
+    timestamp = updated_at.get(72)
+    if (
+        type(modulation) in (float, int)
+        and isfinite(modulation)
+        and 0 <= modulation <= 100
+        and type(timestamp) is int
+        and now.tzinfo is not None
+        and -60 <= now.timestamp() - timestamp <= 450
+    ):
+        return modulation > 0, "swieza_modulacja_id_72_szacunek"
+    return None, "brak_biezacego_stanu_sprezarki_w_api"
+
+
 class CompressorMonitor:
     """Per-device in-memory deltas with unknown first sample, gaps or resets."""
 

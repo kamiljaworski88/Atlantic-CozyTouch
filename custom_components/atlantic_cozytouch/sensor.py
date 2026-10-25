@@ -14,7 +14,7 @@ from .energy_validation import freshness_status
 from .consumption_probe import energy_capabilities_summary
 from .energy_preview import ENERGY_CANDIDATES, candidate_kwh, candidate_summary, cop_readiness
 from .compressor import COMPRESSOR_DERIVED_SPECS
-from .discovery import new_capabilities, inventory_summary
+from .discovery import compressor_host_devices, new_capabilities, inventory_summary
 from .readings import CAPABILITIES
 
 
@@ -31,13 +31,15 @@ async def async_setup_entry(hass, entry, async_add_entities):
         for device, cap_id in discovered:
             seen.add((device["id"], cap_id))
             entities.append(AtlanticReadOnlySensor(coordinator, device, cap_id))
-        for device in coordinator.data or []:
-            reported = set(device.get("reported_capability_ids", []))
-            if not reported.intersection({24, 27, 51, 72}):
-                continue
-            for metric, info in COMPRESSOR_DERIVED_SPECS.items():
-                if not info.required_capabilities.issubset(reported):
-                    continue
+        for device in compressor_host_devices(coordinator.data or []):
+            # All compressor cards are registered for the heat pump, even if
+            # the Atlantic cloud omits 24/27/72. Missing readings stay unknown.
+            for cap_id in (24, 27, 72):
+                key = (device["id"], cap_id)
+                if key not in seen:
+                    seen.add(key)
+                    entities.append(AtlanticReadOnlySensor(coordinator, device, cap_id))
+            for metric in COMPRESSOR_DERIVED_SPECS:
                 identity = (device["id"], metric)
                 if identity not in seen_derived:
                     seen_derived.add(identity)
@@ -132,6 +134,19 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
                 return device["values"].get(self._capability_id)
         return None
 
+    @property
+    def extra_state_attributes(self):
+        if self._capability_id not in (24, 27, 72):
+            return {}
+        for device in self.coordinator.data or []:
+            if device["id"] == self._device_id:
+                reported = self._capability_id in device.get("reported_capability_ids", [])
+                return {
+                    "zgloszone_przez_api": reported,
+                    "status": "odczyt_z_chmury" if reported else "brak_parametru_w_api",
+                }
+        return {"status": "brak_urzadzenia_w_api"}
+
 
 class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):
     """Timestamp of the most recent successful read from Atlantic."""
@@ -211,6 +226,18 @@ class AtlanticCompressorDerivedSensor(CoordinatorEntity, SensorEntity):
     def native_value(self):
         monitor = self.coordinator.atlantic_compressor
         return monitor.metrics.get(self._device_id, {}).get(self._metric)
+
+    @property
+    def extra_state_attributes(self):
+        for device in self.coordinator.data or []:
+            if device["id"] == self._device_id:
+                required = COMPRESSOR_DERIVED_SPECS[self._metric].required_capabilities
+                missing = sorted(required - set(device.get("reported_capability_ids", [])))
+                return {
+                    "brakujace_id_w_api": missing,
+                    "status": "brak_telemetrii" if missing else "zalezy_od_danych_i_ciaglosci_odczytow",
+                }
+        return {"status": "brak_urzadzenia_w_api"}
 
 
 class AtlanticRawEnergyDeltaSensor(CoordinatorEntity, SensorEntity):

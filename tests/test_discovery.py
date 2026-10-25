@@ -16,7 +16,7 @@ for name in ("readings", "discovery"):
     mod = importlib.util.module_from_spec(spec)
     sys.modules[fq] = mod
     spec.loader.exec_module(mod)
-from test_discovery_pkg.discovery import new_capabilities, redacted_inventory, inventory_summary
+from test_discovery_pkg.discovery import compressor_host_devices, new_capabilities, redacted_inventory, inventory_summary
 
 
 class TestDiscovery(unittest.TestCase):
@@ -42,6 +42,26 @@ class TestDiscovery(unittest.TestCase):
         raw = str(result)
         for secret in ("DO_NOT_EXPORT_", "32400", "SERIAL", "NAME"):
             self.assertNotIn(secret, raw)
+
+    def test_thermal_controller_remains_compressor_host_without_vendor_counters(self):
+        devices = [
+            {"id": "heat_pump", "reported_capability_ids": [91, 112, 109]},
+            {"id": "room", "reported_capability_ids": [117, 181]},
+        ]
+        self.assertEqual([x["id"] for x in compressor_host_devices(devices)], ["heat_pump"])
+        # Reporting additional compressor IDs doesn't duplicate the host.
+        devices[0]["reported_capability_ids"].extend([24, 51])
+        self.assertEqual(len(compressor_host_devices(devices)), 1)
+
+    def test_real_compressor_without_hydraulic_ids_is_recognized(self):
+        self.assertEqual(
+            len(compressor_host_devices([{"id": "hp", "reported_capability_ids": [27]}])),
+            1,
+        )
+        self.assertEqual(
+            compressor_host_devices([{"id": "room", "reported_capability_ids": [153, 181]}]),
+            [],
+        )
 
     def test_summary(self):
         result = inventory_summary(self.devices)
