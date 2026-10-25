@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.11 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.12 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,16 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.12 — skumulowany COP z poprawnych przedziałów CO/CWU
+
+- Nowe **trzy encje diagnostyczne**: `COP Atlantic · skumulowany (zaakceptowane próbki)`, `COP Atlantic · skumulowany CO (zaakceptowane próbki)`, `COP Atlantic · skumulowany CWU (zaakceptowane próbki)`. Nie usuwamy ani nie zmieniamy istniejących `unique_id`.
+- **Wzór: Σ(ciepło szacowane, kWh) / Σ(prąd szacowany, kWh)**. Nie sumujemy średnich lub chwilowych COP. Sumujemy tylko poprawne odcinki 2–20 minut z nowym przyrostem ID57/59, dodatnim ΔT, zsynchronizowaną hydrauliką i prawidłowym stosunkiem energii. Osobne sumy dla CO i CWU nie dublują tych samych interwałów.
+- Wynik nie znika podczas postoju ani chwilowego błędu chmury. Zlicza tylko **zaakceptowane interwały**, a nie pełen okres kalendarzowy: atrybuty pokazują liczby próbek, łączny pokryty czas oraz szacowane kWh ciepła i prądu.
+- Sumy zapisywane są **lokalnie w HA** poprzez `homeassistant.helpers.storage.Store`, odseparowane na każdą konfigurację konta; bez loginów, identyfikatorów urządzeń, tokenów, timestampów, zewnętrznych serwerów czy wysyłania danych. Zapis z opóźnieniem 60s plus flush przy normalnym przeładowaniu/wyłączeniu integracji.
+- Po instalacji zaczynamy od **braku wartości (unknown)**, bo nie da się wiarygodnie odtworzyć ciepła wytworzonego przed aktualizacją. COP pojawi się dopiero po **pierwszym zaakceptowanym przedziale grzania** i będzie stopniowo bardziej reprezentatywny w miarę poprawnych próbek.
+- Ważne: prąd i moc hydrauliczna są estymacjami na bazie surowych pól Atlantic; to **nie jest SCOP**, sezonowy COP ani pomiar certyfikowany. Nie publikujemy długoterminowych statystyk HA Energy, bo pokrycie i skala źródeł nie są potwierdzone.
+- Poprawiono także ukryty błąd struktury danych bazowych występujący po zmianie trybu CO/CWU albo resecie licznika.
 
 ## v0.5.11 — COP eksperymentalny przy stabilnych temperaturach w Atlantic
 
