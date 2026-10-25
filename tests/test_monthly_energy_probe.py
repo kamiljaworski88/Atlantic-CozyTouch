@@ -29,6 +29,28 @@ class TestMonthlyEnergy(unittest.TestCase):
         for secret in ("PRIVATE_SERIAL", "PRIVATE_DATE", "99999", "45.9", "12.4"):
             self.assertNotIn(secret, str(out))
 
+    def test_same_record_pair_is_not_proof_of_heat_production(self):
+        payload = [{
+            "type": 1, "unit": 1, "category": 1,
+            "name": "SENSITIVE_ACCOUNT",
+            "consumptionPeriods": [
+                {"consumedQuantity": 12.5, "producedQuantity": 29.0, "cost": 1234567},
+                {"consumedQuantity": 15, "producedQuantity": 0},
+                {"consumedQuantity": 0, "producedQuantity": 13},
+                {"consumedQuantity": True, "producedQuantity": 40},
+                {"consumedQuantity": "INVALID", "producedQuantity": 40},
+            ],
+        }]
+        out = module.monthly_energy_shape(payload)
+        self.assertEqual(out["rekordy_z_para_poboru_i_produkcji_nieokreslonej"], 1)
+        self.assertEqual(
+            out["serie"][0]["rekordy_z_para_poboru_i_produkcji_nieokreslonej"], 1
+        )
+        self.assertFalse(out["wspolny_okres_i_jednostka_ciepla_zweryfikowane"])
+        self.assertFalse(out["energia_cieplna_zweryfikowana"])
+        for private in ("SENSITIVE_ACCOUNT", "1234567", "12.5", "29.0"):
+            self.assertNotIn(private, str(out))
+
     def test_empty_missing_and_incorrect_responses(self):
         self.assertEqual(module.monthly_energy_shape([])["state"], "brak_serii")
         for response in ({}, None, [None], [{"consumptionPeriods": "bad"}]):

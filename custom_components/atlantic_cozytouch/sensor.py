@@ -537,8 +537,14 @@ class AtlanticCopReadinessSensor(CoordinatorEntity, SensorEntity):
             "stan_historii_miesiecznej": getattr(
                 self.coordinator, "atlantic_monthly_energy", {}
             ).get("state", "nie_sprawdzono"),
-            "rekordy_produkcji_ciepla": s.get("okresy_z_energia_wyprodukowana", 0),
-            "rekordy_dodatniej_produkcji": s.get("okresy_z_dodatnia_produkcja", 0),
+            # producedQuantity may mean electricity; never label it heat.
+            "rekordy_produkcji_ciepla": None,
+            "rekordy_produkcji_nieokreslonej": s.get("okresy_z_energia_wyprodukowana", 0),
+            "rekordy_dodatniej_produkcji_nieokreslonej": s.get("okresy_z_dodatnia_produkcja", 0),
+            "miesieczne_pary_pobor_produkcja_nieokreslona": getattr(
+                self.coordinator, "atlantic_monthly_energy", {}
+            ).get("rekordy_z_para_poboru_i_produkcji_nieokreslonej", 0),
+            "produkcja_ciepla_zidentyfikowana": False,
             "deklarowane_pomiary_id164": energy_capabilities_summary(self.coordinator.data or []),
             "hipoteza_flag_produkcji": production_heat_feature_flags(self.coordinator.data or []),
             "cop_wyliczony": False,

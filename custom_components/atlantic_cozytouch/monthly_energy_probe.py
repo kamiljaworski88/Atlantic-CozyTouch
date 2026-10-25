@@ -28,25 +28,33 @@ def monthly_energy_shape(payload: object) -> dict:
     if not payload:
         return {"state": "brak_serii"}
     summaries: list[dict] = []
-    total_prod, positive_prod, electric_rows = 0, 0, 0
+    total_prod, positive_prod, electric_rows, paired_rows = 0, 0, 0, 0
     for item in payload:
         if not isinstance(item, dict):
             return {"state": "nieprawidlowa_odpowiedz"}
         periods = item.get("consumptionPeriods")
         if not isinstance(periods, list) or len(periods) > 240:
             return {"state": "nieprawidlowa_odpowiedz"}
-        n_consumed = n_produced = n_positive = 0
+        n_consumed = n_produced = n_positive = n_paired = 0
         for period in periods:
             if not isinstance(period, dict):
                 return {"state": "nieprawidlowa_odpowiedz"}
-            if _valid_number(period.get("consumedQuantity")):
+            consumed = period.get("consumedQuantity")
+            produced = period.get("producedQuantity")
+            if _valid_number(consumed):
                 n_consumed += 1
-            if _valid_number(period.get("producedQuantity")):
+            if _valid_number(produced):
                 n_produced += 1
-                if period["producedQuantity"] > 0:
+                if produced > 0:
                     n_positive += 1
+            # This only shows fields coexisting in one API record;
+            # it does NOT validate heat units, category, or timestamps.
+            if (_valid_number(consumed) and consumed > 0
+                    and _valid_number(produced) and produced > 0):
+                n_paired += 1
         total_prod += n_produced
         positive_prod += n_positive
+        paired_rows += n_paired
         type_code = _code(item.get("type"))
         unit_code = _code(item.get("unit"))
         if type_code == 1 and unit_code == 1:
@@ -60,6 +68,7 @@ def monthly_energy_shape(payload: object) -> dict:
                 "okresy_z_pobrana": n_consumed,
                 "okresy_z_produkcja": n_produced,
                 "okresy_z_dodatnia_produkcja": n_positive,
+                "rekordy_z_para_poboru_i_produkcji_nieokreslonej": n_paired,
             })
     return {
         "state": "dostepna",
@@ -69,6 +78,8 @@ def monthly_energy_shape(payload: object) -> dict:
         "serie_elektryczne_wg_kodow": electric_rows,
         "okresy_z_liczbowa_produkcja": total_prod,
         "okresy_z_dodatnia_produkcja": positive_prod,
+        "rekordy_z_para_poboru_i_produkcji_nieokreslonej": paired_rows,
+        "wspolny_okres_i_jednostka_ciepla_zweryfikowane": False,
         "energia_cieplna_zweryfikowana": False,
         "cop_miesieczny_zweryfikowany": False,
         "uwaga": "Pole producedQuantity nie jest dowodem energii cieplnej",

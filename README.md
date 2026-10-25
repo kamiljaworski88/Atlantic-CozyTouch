@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.7 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.8 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,17 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.8 — bezpieczny COP i zgodność czasowa pomiarów
+
+- **Korekta topologii:** COP hydrauliczny nie łączy ID112 (przepływ) z ID109/116 (zasilanie/powrót) z różnych urządzeń logicznych bez potwierdzonego mapowania. Zwraca `niepotwierdzone_powiazanie_obiegu` i `unknown`, zamiast pozornie dokładnego wyniku. Na tej Extensa czujniki mogą występować na różnych logicznych urządzeniach; do odblokowania pomiaru niezbędna będzie niezależna walidacja powiązania obiegów.
+- Weryfikacja świeżości **ID91,112,109,116 oraz ID57/59** używa znaczników `modificationDate` producenta. Maksymalna różnica czasów w jednej próbce: **180 s**; luka w przyrostach energii musi mieścić się w przedziale 2–20 min.
+- Szacunkowy COP hydrauliczny wykorzystuje średnią z mocy cieplnej na początku i na końcu przedziału (metoda trapezów), zamiast tylko ostatniej próbki. To nadal **eksperymentalny szacunek**, nie pomiar ciepła i nie SCOP.
+- Na błędzie odczytu chmury resetujemy podstawę porównawczą COP; przerwa sieciowa nie może stworzyć fałszywego przyrostu.
+- Diagnostyka miesięczna rozpoznaje liczbę rekordów, w których **pobrana energia** i **nieokreślona produkcja** występują w tej samej odpowiedzi. **Nie oznacza to potwierdzenia energii cieplnej ani zgodności czasu/jednostek**; nie eksportujemy wartości kWh, kosztów, tokenów ani ID.
+- W statusie gotowości COP atrybut `rekordy_produkcji_ciepla` ma teraz wartość `null` (brak dowodu), a liczby potencjalnych rekordów otrzymały jednoznaczną nazwę `rekordy_produkcji_nieokreslonej`. Dotychczasowe `unique_id` encji pozostają bez zmian.
+- Brak nowych endpointów, pośredników, komend sterowania, klas HA Energy i syntetycznego miesięcznego COP.
+- [Plan weryfikacji 0.5.8](docs/COP_VALIDATION_0_5_8.md).
 
 ## v0.5.7 — ostrożne użycie bitów 256/1024 z ID 164
 

@@ -15,17 +15,29 @@ spec.loader.exec_module(mod)
 
 
 def sample(moment, energy_co=10000, energy_cwu=3000, flow=20, supply=34, ret=29.5, mode="CO",
-           flow_age=0, return_age=0, electric_age=0):
+           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=0):
     ts = int(moment.timestamp())
-    return [
-        {"id": "private_interface", "reported_capability_ids": [57, 59, 91, 112],
-         "values": {57: energy_co, 59: energy_cwu, 91: mode, 112: flow},
-         "updated_at": {57: ts - electric_age, 59: ts - electric_age,
-                        112: ts - flow_age}},
-        {"id": "private_generator", "reported_capability_ids": [109, 116],
-         "values": {109: supply, 116: ret},
-         "updated_at": {109: ts, 116: ts - return_age}},
-    ]
+    interface = {
+        "id": "private_interface", "reported_capability_ids": [57, 59, 91, 112],
+        "values": {57: energy_co, 59: energy_cwu, 91: mode, 112: flow},
+        "updated_at": {
+            57: ts - electric_age, 59: ts - electric_age,
+            91: ts - mode_age, 112: ts - flow_age,
+        },
+    }
+    generator = {
+        "id": "private_generator" if separate else "private_interface",
+        "reported_capability_ids": [109, 116],
+        "values": {109: supply, 116: ret},
+        "updated_at": {109: ts, 116: ts - return_age},
+    }
+    if separate:
+        return [interface, generator]
+    # Safe synthetic fixture: all five measurements on ONE logical device.
+    interface["reported_capability_ids"].extend(generator["reported_capability_ids"])
+    interface["values"].update(generator["values"])
+    interface["updated_at"].update(generator["updated_at"])
+    return [interface]
 
 
 class TestHydraulicCop(unittest.TestCase):
@@ -43,6 +55,44 @@ class TestHydraulicCop(unittest.TestCase):
         self.assertAlmostEqual(result["thermal_kw"], 6.279, places=3)
         self.assertAlmostEqual(result["electrical_kw"], 2.4, places=3)
         self.assertEqual(result["cop"], 2.62)
+
+    def test_split_logical_devices_never_masquerade_as_one_loop(self):
+        self.monitor.ingest(sample(self.t, separate=True), self.t)
+        later = self.t + timedelta(minutes=5)
+        self.monitor.ingest(sample(later, energy_co=10200, separate=True), later)
+        self.assertEqual(self.monitor.metrics["status"], "niepotwierdzone_powiazanie_obiegu")
+        self.assertIsNone(self.monitor.metrics["thermal_kw"])
+        self.assertIsNone(self.monitor.metrics["cop"])
+
+    def test_vendor_timestamps_must_be_aligned_within_snapshot(self):
+        self.monitor.ingest(sample(self.t), self.t)
+        later = self.t + timedelta(minutes=5)
+        self.monitor.ingest(sample(later, energy_co=10200, flow_age=240), later)
+        self.assertEqual(self.monitor.metrics["status"], "niespojne_czasy_probek")
+        self.assertIsNone(self.monitor.metrics["cop"])
+        # Circuit mode stale even when temperatures are fresh.
+        self.monitor.ingest(sample(later, energy_co=10200, mode_age=3600), later)
+        self.assertEqual(self.monitor.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
+
+    def test_trapezoidal_thermal_power_not_just_final_snapshot(self):
+        self.monitor.ingest(sample(self.t), self.t)
+        later = self.t + timedelta(minutes=5)
+        self.monitor.ingest(sample(later, energy_co=10200, supply=37), later)
+        result = self.monitor.metrics
+        self.assertEqual(result["status"], "szacunek_diagnostyczny")
+        self.assertAlmostEqual(result["thermal_kw"], 10.465, places=3)
+        self.assertEqual(result["cop"], 3.49)
+
+    def test_no_cop_after_unaligned_electric_update_then_new_baseline(self):
+        self.monitor.ingest(sample(self.t), self.t)
+        later = self.t + timedelta(minutes=5)
+        self.monitor.ingest(sample(later, energy_co=10200, electric_age=300), later)
+        self.assertEqual(self.monitor.metrics["status"], "niespojne_czasy_probek")
+        self.assertIsNone(self.monitor.metrics["cop"])
+        next_sample = later + timedelta(minutes=5)
+        self.monitor.ingest(sample(next_sample, energy_co=10400), next_sample)
+        self.assertEqual(self.monitor.metrics["status"], "zbieranie_pierwszej_probki")
+        self.assertIsNone(self.monitor.metrics["cop"])
 
     def test_no_delta_is_unknown_not_zero_and_baseline_doesnt_shift(self):
         self.monitor.ingest(sample(self.t), self.t)
