@@ -37,9 +37,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def update():
         try:
             devices = await client.async_read()
+            # Bounded optional device GET. Its failure never prevents standard
+            # telemetry or causes device writes.
+            await client.async_probe_compressor_capabilities(devices)
+            coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
             # Optional endpoint; errors are isolated from standard telemetry.
             await client.async_probe_consumptions()
-            coordinator.atlantic_consumptions = dict(client.consumption_summary)
+            coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
+    coordinator.atlantic_consumptions = dict(client.consumption_summary)
             coordinator.atlantic_daily_energy = {
                 category: dict(days) for category, days in client.energy_daily.items()
             }
