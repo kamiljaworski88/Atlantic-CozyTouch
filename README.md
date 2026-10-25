@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.1 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.2 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,28 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.2 (projekt PR) — eksperymentalny COP hydrauliczny
+
+Automatyczny, **wyłącznie diagnostyczny szacunek** COP dla aktywnego
+obiegu CO albo CWU. Wykorzystuje źródła Magellan zgłaszane na tej klasie
+urządzenia: przepływ ID112 (l/min), zasilanie ID109 (°C), powrót ID116
+(°C) oraz krótkookresowy przyrost licznika elektrycznego ID57/59 (hipoteza Wh).
+Moc cieplna w kW = (4,186/60) × przepływ [l/min] × (zasilanie−powrót) [K].
+Moc elektryczna w kW jest szacowana z przyrostu Wh na spójnej próbce
+tego samego obiegu, a COP = moc cieplna / moc elektryczna.
+
+**Ograniczenia:** to nie jest odczyt chwilowego COP producenta ani sezonowy
+SCOP. Chmura może aktualizować liczniki rzadko, a temperatura, przepływ i
+licznik prądu nie muszą być jednoczesne. Wynik jest pokazywany tylko przy
+poprawnej świeżości, spójnym obiegu, dodatnim przyroście elektrycznym
+w oknie 2–20 minut oraz wiarygodnych zakresach; w pozostałych wypadkach
+COP pozostaje `unknown`. Przybliżenie zakłada wodę zamiast roztworu
+glikolu. Skala ID57/59, przypisanie obiegów i jednostka przepływu
+pochodzą z publicznego katalogu i porównywalnych urządzeń, lecz
+**nie są pomiarowo zatwierdzone na tej konkretnej pompie**.
+Szacunek nie trafia do Energy Dashboard ani kosztów. Bez dodatkowych
+endpointów, serwerów pośrednich i poleceń sterujących.
 
 ## v0.5.1 — dzienne zużycie energii CO/CWU (PR #18)
 
