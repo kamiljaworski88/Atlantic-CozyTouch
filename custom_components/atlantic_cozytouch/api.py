@@ -75,6 +75,10 @@ class AtlanticReadOnlyClient:
         self._compressor_setup_missing: set[str] = set()
         self._compressor_cache: dict[str, tuple[datetime, dict]] = {}
         self.compressor_probe_summary: dict[str, object] = {"state": "nie_sprawdzono"}
+        self._device_energy_ids: set[str] = set()
+        self._device_energy_due = datetime.min.replace(tzinfo=timezone.utc)
+        self._device_energy_disabled = False
+        self.device_energy_summary: dict[str, object] = {"state": "nie_sprawdzono"}
 
     def _request(self, method: str, url: str, **kwargs):
         """Reject all methods/routes except vendor login and snapshot read.
@@ -99,9 +103,17 @@ class AtlanticReadOnlyClient:
             and any(url == self._compressor_capabilities_url(device_id)
                     for device_id in self._compressor_device_ids)
         )
+        device_energy_allowed = (
+            method == "GET"
+            and any(
+                url == self._device_energy_url(device_id, period)
+                for device_id in self._device_energy_ids
+                for period in ("daily", "monthly")
+            )
+        )
         if ((method, url) not in _ALLOWED_HTTP_OPERATIONS
                 and not consumption_allowed and not monthly_allowed
-                and not capability_allowed):
+                and not capability_allowed and not device_energy_allowed):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -142,6 +154,18 @@ class AtlanticReadOnlyClient:
         if not self._valid_device_id(device_id) or device_id not in self._compressor_device_ids:
             raise AtlanticError("Device is not an authorized compressor probe target")
         return API_ORIGIN + "/magellan/capabilities/?deviceId=" + device_id
+
+    def _device_energy_url(self, device_id: str, period: str) -> str:
+        if (
+            not self._valid_device_id(device_id)
+            or device_id not in self._device_energy_ids
+            or period not in ("daily", "monthly")
+        ):
+            raise AtlanticError("Device energy GET outside authenticated allowlist")
+        return (
+            API_ORIGIN + "/magellan/devices/" + device_id
+            + "/consumptions?periodicity=" + period
+        )
 
     def _ensure_not_throttled(self) -> None:
         if datetime.now(timezone.utc) < self._cooldown_until:
@@ -270,11 +294,24 @@ class AtlanticReadOnlyClient:
             self._compressor_probe_disabled = False
             self._compressor_cache = {}
             self.compressor_probe_summary = {"state": "nie_sprawdzono"}
+            self._device_energy_due = datetime.min.replace(tzinfo=timezone.utc)
+            self._device_energy_disabled = False
+            self.device_energy_summary = {"state": "nie_sprawdzono"}
         # IDs come only from the authenticated account's setup snapshot.
         hosts = compressor_host_devices(devices)
         self._compressor_device_ids = {
             d["id"] for d in hosts[:2] if self._valid_device_id(d["id"])
         }
+        # Require a unique actual pump (active circuit + flow) to prevent
+        # querying unrelated devices, even those on the same account.
+        energy_hosts = [
+            d for d in hosts
+            if {91, 112}.issubset(set(d.get("reported_capability_ids", [])))
+            and self._valid_device_id(d["id"])
+        ]
+        self._device_energy_ids = (
+            {energy_hosts[0]["id"]} if len(energy_hosts) == 1 else set()
+        )
         self._compressor_setup_missing = {
             d["id"] for d in hosts[:2]
             if d["id"] in self._compressor_device_ids
