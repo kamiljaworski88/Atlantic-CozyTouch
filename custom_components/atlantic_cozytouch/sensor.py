@@ -83,6 +83,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticThermalEvidenceSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "last_cop"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cumulative_total"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cumulative_co"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cumulative_cwu"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "thermal_kw"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "electrical_kw"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "status"),
@@ -678,6 +681,9 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
     LABELS = {
         "cop": ("COP Atlantic · szacunkowy", None),
         "last_cop": ("COP Atlantic · ostatni poprawny szacunek (12 h)", None),
+        "cumulative_total": ("COP Atlantic · skumulowany (zaakceptowane próbki)", None),
+        "cumulative_co": ("COP Atlantic · skumulowany CO (zaakceptowane próbki)", None),
+        "cumulative_cwu": ("COP Atlantic · skumulowany CWU (zaakceptowane próbki)", None),
         "thermal_kw": ("Moc cieplna Atlantic · szacunkowa", "kW"),
         "electrical_kw": ("Moc elektryczna Atlantic · szacunkowa", "kW"),
         "status": ("COP Atlantic · status obliczeń", None),
@@ -692,14 +698,48 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_hydraulic_{metric}"
         # Deliberately no state_class: no HA long-term/energy statistics.
 
+    def _cumulative_summary(self) -> dict | None:
+        bucket = {
+            "cumulative_total": "total",
+            "cumulative_co": "CO",
+            "cumulative_cwu": "CWU",
+        }.get(self._metric)
+        if bucket is None:
+            return None
+        return self.coordinator.atlantic_hydraulic_cop.accumulator.snapshot()[bucket]
+
+    @property
+    def available(self):
+        # Historical accepted intervals remain usable during a transient
+        # Atlantic cloud failure; do not erase them with coordinator.available.
+        if self._metric.startswith("cumulative_"):
+            return True
+        return super().available
+
     @property
     def native_value(self):
+        summary = self._cumulative_summary()
+        if summary is not None:
+            return summary["cop"]
         if not self.coordinator.last_update_success:
             return None
         return self.coordinator.atlantic_hydraulic_cop.metrics.get(self._metric)
 
     @property
     def extra_state_attributes(self):
+        summary = self._cumulative_summary()
+        if summary is not None:
+            return {
+                "zaakceptowane_przedzialy": summary["intervals"],
+                "pokryty_czas_h": summary["covered_hours"],
+                "energia_cieplna_szac_kwh": summary["heat_kwh"],
+                "energia_elektryczna_szac_kwh": summary["electric_kwh"],
+                "zakres": summary["coverage"],
+                "licznik_lokalny_ha": True,
+                "cop_potwierdzony": False,
+                "metoda": "suma_szac_ciepla_kwh_przez_sume_szac_pradu_kwh",
+                "ograniczenie": "nie_jest_sezonowym_cop_pompy_ani_pelnym_czasem_pracy",
+            }
         metrics = self.coordinator.atlantic_hydraulic_cop.metrics
         return {
             "aktywny_obieg": metrics.get("circuit"),
