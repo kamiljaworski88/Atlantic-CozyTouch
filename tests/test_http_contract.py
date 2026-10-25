@@ -325,5 +325,109 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual([m for m, _, _ in session.calls], ["POST", "GET"])
 
 
+class DeviceCapabilitySession(Session):
+    """Mock the *official* per-device GET without network access."""
+
+    def __init__(self, *, device_status=200, direct_caps=None, device_id=9):
+        super().__init__(setup_payload=[{
+            "id": 123,
+            "devices": [{"deviceId": device_id, "name": "Simulated pump",
+                         "capabilities": [
+                             {"capabilityId": 91, "value": "1"},
+                             {"capabilityId": 112, "value": "15.8"},
+                         ]}],
+        }])
+        self.device_status = device_status
+        self.direct_caps = direct_caps if direct_caps is not None else [
+            {"capabilityId": 24, "value": "50"},
+            {"capabilityId": 27, "value": "82800"},
+            {"capabilityId": 51, "value": "1"},
+            {"capabilityId": 72, "value": "45"},
+            {"capabilityId": 99999, "value": "SECRET_DO_NOT_STORE"},
+        ]
+
+    def get(self, url, **kwargs):
+        if "/magellan/capabilities/?deviceId=" in url:
+            self.calls.append(("GET", url, kwargs))
+            return Reply(self.device_status, self.direct_caps)
+        return super().get(url, **kwargs)
+
+
+class TestDeviceCompressorProbe(unittest.IsolatedAsyncioTestCase):
+    async def test_read_only_whitelist_is_limited_to_authenticated_device(self):
+        session = DeviceCapabilitySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+        permitted = API_ORIGIN + "/magellan/capabilities/?deviceId=9"
+        with self.assertRaises(AtlanticError):
+            client._request("GET", permitted)
+        devices = await client.async_read()
+        self.assertEqual(devices[0]["values"][91], "CO")
+        for method, url in (
+            ("POST", permitted),
+            ("GET", permitted + "&debug=1"),
+            ("GET", API_ORIGIN + "/magellan/capabilities/?deviceId=10"),
+            ("GET", "https://example.invalid/magellan/capabilities/?deviceId=9"),
+            ("PATCH", permitted),
+        ):
+            with self.subTest(url=url, method=method), self.assertRaises(AtlanticError):
+                client._request(method, url)
+        self.assertEqual(len(session.calls), 2)
+        await client.async_probe_compressor_capabilities(devices)
+        self.assertEqual(client.compressor_probe_summary["state"], "uzupelniono")
+        self.assertEqual(
+            [(m, u) for m, u, _ in session.calls],
+            [
+                ("POST", API_ORIGIN + TOKEN_PATH),
+                ("GET", API_ORIGIN + READ_PATH),
+                ("GET", permitted),
+            ],
+        )
+        self.assertEqual(devices[0]["values"][24], 50)
+        self.assertEqual(devices[0]["values"][27], 82800)
+        self.assertEqual(devices[0]["values"][51], True)
+        self.assertEqual(devices[0]["values"][72], 45)
+        self.assertNotIn("SECRET_DO_NOT_STORE", str(devices))
+        self.assertNotIn("SECRET_DO_NOT_STORE", str(client.compressor_probe_summary))
+        for _m, _u, kwargs in session.calls:
+            self.assertEqual(kwargs["allow_redirects"], False)
+            self.assertNotIn("proxy", kwargs)
+
+    async def test_bounded_probe_and_cache_after_standard_poll(self):
+        session = DeviceCapabilitySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+        original = await client.async_read()
+        await client.async_probe_compressor_capabilities(original)
+        after = await client.async_read()
+        self.assertEqual(after[0]["values"][24], 50)
+        self.assertEqual(after[0]["values"][51], True)
+        await client.async_probe_compressor_capabilities(after)
+        self.assertEqual(len([x for x in session.calls if "/capabilities/?deviceId=" in x[1]]), 1)
+
+    async def test_optional_probe_failure_does_not_erase_setup_telemetry(self):
+        for status, expected in (
+            (403, "endpoint_niedostepny"),
+            (404, "endpoint_niedostepny"),
+            (429, "limit_zapytan"),
+            (500, "blad_http"),
+        ):
+            with self.subTest(status=status):
+                session = DeviceCapabilitySession(device_status=status)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+                devices = await client.async_read()
+                await client.async_probe_compressor_capabilities(devices)
+                self.assertEqual(client.compressor_probe_summary["state"], expected)
+                self.assertEqual(devices[0]["values"][112], 15.8)
+
+    async def test_invalid_device_id_or_no_heat_pump_never_triggers_device_get(self):
+        for device_id in ("attack&query=1", "001", "ABCDEFG"):
+            with self.subTest(device_id=device_id):
+                session = DeviceCapabilitySession(device_id=device_id)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+                devices = await client.async_read()
+                await client.async_probe_compressor_capabilities(devices)
+                self.assertEqual([m for m, u, _ in session.calls if "/capabilities/?deviceId=" in u], [])
+                self.assertEqual(client.compressor_probe_summary["state"], "brak_numerycznego_id_pompy")
+
+
 if __name__ == "__main__":
     unittest.main()

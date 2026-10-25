@@ -74,6 +74,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
+        AtlanticCompressorProbeSensor(coordinator, entry.entry_id),
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "thermal_kw"),
@@ -344,6 +345,29 @@ class AtlanticTelemetryFreshnessSensor(CoordinatorEntity, SensorEntity):
             "expected_poll_interval_seconds": POLL_SECONDS,
             "max_fresh_age_seconds": int(POLL_SECONDS * 2.5),
         }
+
+
+class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
+    """Result of the optional per-device read; no raw identifiers or values."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Diagnostyka odczytu sprężarki z API"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:cloud-search-outline"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_compressor_direct_probe"
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, "atlantic_compressor_probe", {}).get(
+            "state", "nie_sprawdzono"
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return dict(getattr(self.coordinator, "atlantic_compressor_probe", {}))
 
 
 class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):

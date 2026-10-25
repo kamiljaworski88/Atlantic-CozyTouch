@@ -10,6 +10,7 @@ Home Assistant komunikuje się **bezpośrednio** z oficjalną usługą `https://
 | --- | --- | --- |
 | Uwierzytelnianie | POST /users/token | Tak, niezbędne do odczytu |
 | Stan urządzeń | GET /magellan/cozytouch/setupviewv2 | Tak |
+| Parametry sprężarki | GET /magellan/capabilities/?deviceId={accountDevice} | Tak, tylko ID z konta, maks. co 15 min |
 | Zmiana nastaw / trybów | dowolny endpoint | **Nie** |
 | Komendy serwisowe | dowolny endpoint | **Nie** |
 | Wysyłka do innych hostów | dowolny | **Nie** |
@@ -41,7 +42,7 @@ Projekt bazuje na obserwacji publicznie udokumentowanego zachowania interfejsu, 
 ## Audyt rozszerzony — 23.10.2026
 
 ### Rzeczywista granica HTTP
-- Centralny filtr `AtlanticReadOnlyClient._request` zezwala tylko na `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz `GET https://apis.groupe-atlantic.com/magellan/cozytouch/setupviewv2` (odczyt).
+- Centralny filtr `AtlanticReadOnlyClient._request` zezwala tylko na `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz dokładnie dopuszczone `GET` odczytu instalacji, historii energii i parametrów pompy przypisanej do zalogowanego konta.
 - Nieprawidłowa metoda lub URL są odrzucane **przed** jakimkolwiek żądaniem.
 - Brak przekierowań HTTP, brak możliwości ustawienia `ssl=False` lub parametru proxy przez metodę żądania.
 - HTTP 429: wstrzymanie odczytu na 5–60 min zgodnie z `Retry-After`, z domyślną przerwą 15 min.
