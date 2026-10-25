@@ -87,3 +87,21 @@ jednostki i klasy statystyk. Jeśli wcześniejsze wersje opublikowały
 dane tych ID do Recorder, historycznych wpisów/statystyk HA ta
 aktualizacja nie usuwa; wymagają osobnej kontroli przy obecnych
 użytkownikach liczników gazowych. Wszystkie zmiany read-only.
+
+
+## Aneks 25.10.2026 — alternatywny odczyt flag 256 / 1024 (v0.5.7)
+
+Alternatywna interpretacja niezależnej tabeli `gduteil/cozytouch`
+określa bit 256 jako `heating_production`, a 1024 jako
+`dhw_production`. Dla maski 1298 występują oba. Daje to wskazówkę
+wyszukiwania **źródła energii cieplnej CO/CWU** w historii Magellan.
+Oryginalny katalog producenta podaje wyłącznie bity 1..64;
+mapowanie 256/1024 pozostaje hipotezą interoperacyjności.
+
+W v0.5.7 hipotezę publikujemy jako oddzielny status diagnostyczny.
+**Flagi to nie wartości energii (kWh)**. Nie wolno liczyć COP przez
+dzielenie bitów ani zamieniać ich na licznik cieplny. Zweryfikowany
+COP okresowy wymaga wyprodukowanych kWh oraz pobranych kWh
+dla tego samego obiegu i identycznego okresu. Istniejące diagnostyczne
+GET daily/monthly już sprawdzają obecność danych produkcyjnych,
+więc nie rozszerzamy teraz granicy HTTP.
