@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.12 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.13 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,14 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.13 — badanie źródła wyprodukowanego ciepła w API
+
+- Diagnostyczny test `producedQuantity` dla miesięcznych historii pobieranych już z oficjalnej chmury, **bez dodatkowych żądań API**. W istniejących dwóch sensorach `Historia energii Atlantic · miesięczna kontrola` oraz `Historia energii Atlantic · odczyt urządzenia` atrybut `audyt_surowych_kandydatow` pokazuje **tylko anonimowe i ograniczone liczbowo kandydatury** produkcji z ostatnich dwóch miesięcy wraz z kodami `type/unit/category/mode`. Przy braku produkcji stan `brak_dodatnich_producedquantity`.
+- `producedQuantity` **nie jest automatycznie uznawane za ciepło**: liczby pozostają surowe, nie trafiają do COP, nie są zapisywane historycznie i nie są sumowane między endpointami. Brak identyfikatorów urządzeń, numerów seryjnych, tokenów, kosztów i dokładnych dat w diagnostyce.
+- Cel: porównać wykryte kandydatury z ekranem sterownika Atlantic, w którym energia wyprodukowana dla CO i CWU jest pokazana osobno. Wewnętrzne ID57/59 według publicznego katalogu to **energia elektryczna** odpowiednio CO i CWU, a `ID164` to **flagi wsparcia funkcji**, nie liczniki ciepła.
+- Kryteria walidacji i źródła: [audyt API Magellan 25.10.2026](docs/ATLANTIC_THERMAL_API_RESEARCH_20261025.md).
+- Ta aktualizacja **nie odblokowuje samoczynnie COP** i nie zmienia istniejącego szacunkowego algorytmu. Jeśli historia nie zawiera wartości `producedQuantity`, należy poszukiwać ciepła w innym źródle.
 
 ## v0.5.12 — skumulowany COP z poprawnych przedziałów CO/CWU
 
