@@ -11,7 +11,7 @@ from homeassistant.helpers.update_coordinator import CoordinatorEntity
 
 from .const import DOMAIN, POLL_SECONDS
 from .energy_validation import freshness_status
-from .consumption_probe import energy_capabilities_summary
+from .consumption_probe import energy_capabilities_summary, production_heat_feature_flags
 from .energy_preview import ENERGY_CANDIDATES, candidate_kwh, candidate_summary, cop_readiness
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import compressor_host_devices, new_capabilities, inventory_summary
@@ -74,6 +74,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
+        AtlanticThermalProductionSupportSensor(coordinator, entry.entry_id),
         AtlanticMonthlyEnergyProbeSensor(coordinator, entry.entry_id),
         AtlanticDeviceEnergyProbeSensor(coordinator, entry.entry_id),
         AtlanticCompressorProbeSensor(coordinator, entry.entry_id),
@@ -421,6 +422,27 @@ class AtlanticDeviceEnergyProbeSensor(CoordinatorEntity, SensorEntity):
         return dict(getattr(self.coordinator, "atlantic_device_energy", {}))
 
 
+class AtlanticThermalProductionSupportSensor(CoordinatorEntity, SensorEntity):
+    """Show *support* flags from 164, not produced heat or COP readings."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Możliwości produkcji ciepła · ID 164 (hipoteza)"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:heat-wave"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_heat_production_support"
+
+    @property
+    def native_value(self):
+        return production_heat_feature_flags(self.coordinator.data or [])["status"]
+
+    @property
+    def extra_state_attributes(self):
+        return production_heat_feature_flags(self.coordinator.data or [])
+
+
 class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
     """Safe API endpoint status: no raw energy values, tokens, or setup ID."""
 
@@ -444,6 +466,9 @@ class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
         return {
             **status,
             "deklarowane_pomiary_id164": energy_capabilities_summary(
+                self.coordinator.data or []
+            ),
+            "hipoteza_flag_produkcji": production_heat_feature_flags(
                 self.coordinator.data or []
             ),
         }
@@ -515,6 +540,7 @@ class AtlanticCopReadinessSensor(CoordinatorEntity, SensorEntity):
             "rekordy_produkcji_ciepla": s.get("okresy_z_energia_wyprodukowana", 0),
             "rekordy_dodatniej_produkcji": s.get("okresy_z_dodatnia_produkcja", 0),
             "deklarowane_pomiary_id164": energy_capabilities_summary(self.coordinator.data or []),
+            "hipoteza_flag_produkcji": production_heat_feature_flags(self.coordinator.data or []),
             "cop_wyliczony": False,
             "powod": "Brak zweryfikowanych pomiarów ciepła i energii elektrycznej w tym samym okresie",
         }
