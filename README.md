@@ -7,7 +7,7 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
-- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz dwa odczyty `GET`: `/magellan/cozytouch/setupviewv2` i `/magellan/setups/{setupId}/consumptions?periodicity=daily` (historia, ograniczona do instalacji zalogowanego konta).
+- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz odczyty `GET`: `/magellan/cozytouch/setupviewv2`, `/magellan/setups/{setupId}/consumptions?periodicity=daily` i `/magellan/capabilities/?deviceId=…` (wyłącznie potwierdzone ID pompy przypisane do zalogowanego konta).
 - Bez serwerów pośredniczących autora integracji, analityki i eksportu danych. **Integracja wymaga chmury producenta**, a nie działa lokalnie/offline.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
