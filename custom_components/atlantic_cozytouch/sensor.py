@@ -804,6 +804,12 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
             "aktywny_obieg": metrics.get("circuit"),
             "topologia_zrodel": metrics.get("topology"),
             "wiek_probek_s": metrics.get("source_ages_seconds"),
+            "rozbieznosc_znacznikow_temperatur_s": metrics.get(
+                "last_change_skew_temperatures_seconds"
+            ),
+            "semantyka_znacznikow": metrics.get(
+                "hydraulic_observation_evidence"
+            ),
             "wiarygodnosc_temperatur": metrics.get("temperature_evidence"),
             "pewnosc_szacunku": metrics.get("confidence"),
             "roznica_temperatur_k": metrics.get("delta_t_k"),
