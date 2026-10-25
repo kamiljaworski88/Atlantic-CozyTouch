@@ -6,17 +6,25 @@ import voluptuous as vol
 
 from homeassistant import config_entries
 from homeassistant.const import CONF_PASSWORD, CONF_USERNAME
+from homeassistant.core import callback
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
-from .const import DOMAIN
+from .const import DOMAIN, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
 
 
 class AtlanticReadOnlyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
     """Configure vendor cloud monitoring without any write capability."""
 
     VERSION = 1
+
+    @staticmethod
+    @callback
+    def async_get_options_flow(config_entry):
+        """Expose a clearly labelled user opt-in for experimental COP."""
+        return AtlanticReadOnlyOptionsFlow()
+
 
     async def async_step_user(self, user_input: dict | None = None):
         errors: dict[str, str] = {}
@@ -51,4 +59,35 @@ class AtlanticReadOnlyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
                 }
             ),
             errors=errors,
+        )
+
+
+class AtlanticReadOnlyOptionsFlow(config_entries.OptionsFlow):
+    """Opt-in to an experimental 1:1 cross-module hydraulic estimate.
+
+    The cloud may expose the same physical heat pump as multiple logical
+    devices. This option enables joining exactly one interface and one
+    generator; it cannot prove their actual hydraulic relationship.
+    """
+
+    async def async_step_init(self, user_input: dict | None = None):
+        if user_input is not None:
+            return self.async_create_entry(
+                title="",
+                data={
+                    OPT_EXPERIMENTAL_CROSS_DEVICE_COP: (
+                        user_input.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
+                    )
+                },
+            )
+        return self.async_show_form(
+            step_id="init",
+            data_schema=vol.Schema({
+                vol.Optional(
+                    OPT_EXPERIMENTAL_CROSS_DEVICE_COP,
+                    default=self.config_entry.options.get(
+                        OPT_EXPERIMENTAL_CROSS_DEVICE_COP, False
+                    ),
+                ): bool,
+            }),
         )
