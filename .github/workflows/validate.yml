@@ -129,9 +129,22 @@ jobs:
               ) for e in cumulative)
               last_cop = next(
                   e for e in sensors
-                  if e._attr_name == "COP Atlantic · ostatni poprawny szacunek (12 h)"
+                  if e._attr_name == "COP Atlantic · ostatni zaakceptowany (historyczny)"
               )
               assert last_cop._attr_unique_id == "atlantic_cozytouch_smoke_hydraulic_last_cop"
+              persistent = next(
+                  e for e in sensors if e._attr_name == "COP Atlantic · szacunkowy"
+              )
+              assert persistent._attr_unique_id == "atlantic_cozytouch_smoke_hydraulic_cop"
+              live = next(
+                  e for e in sensors
+                  if e._attr_name == "COP Atlantic · aktualna próbka (chwilowy)"
+              )
+              assert live._attr_unique_id == "atlantic_cozytouch_smoke_hydraulic_live_cop"
+              assert any(e._attr_name == "COP Atlantic · ostatni zaakceptowany CO"
+                         for e in sensors)
+              assert any(e._attr_name == "COP Atlantic · ostatni zaakceptowany CWU"
+                         for e in sensors)
               readiness = next(
                   e for e in sensors if e._attr_name == "COP Atlantic · gotowość danych"
               )
