@@ -23,6 +23,7 @@ from .readings import extract_devices
 from .discovery import compressor_host_devices
 from .consumption_probe import parse_setup_id, summarize_consumptions
 from .energy_daily import extract_electricity_days
+from .monthly_energy_probe import monthly_energy_shape
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -65,6 +66,9 @@ class AtlanticReadOnlyClient:
         self._consumption_disabled = False
         self.consumption_summary: dict = {"state": "nie_sprawdzono"}
         self.energy_daily: dict[int, dict[str, float]] = {}
+        self._monthly_probe_due = datetime.min.replace(tzinfo=timezone.utc)
+        self._monthly_probe_disabled = False
+        self.monthly_energy_summary: dict[str, object] = {"state": "nie_sprawdzono"}
         self._compressor_device_ids: set[str] = set()
         self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
         self._compressor_probe_disabled = False
@@ -85,13 +89,19 @@ class AtlanticReadOnlyClient:
             and self._setup_id is not None
             and url == self._consumption_url()
         )
+        monthly_allowed = (
+            method == "GET"
+            and self._setup_id is not None
+            and url == self._monthly_energy_url()
+        )
         capability_allowed = (
             method == "GET"
             and any(url == self._compressor_capabilities_url(device_id)
                     for device_id in self._compressor_device_ids)
         )
         if ((method, url) not in _ALLOWED_HTTP_OPERATIONS
-                and not consumption_allowed and not capability_allowed):
+                and not consumption_allowed and not monthly_allowed
+                and not capability_allowed):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -110,6 +120,14 @@ class AtlanticReadOnlyClient:
         return (
             API_ORIGIN + f"/magellan/setups/{self._setup_id}/consumptions"
             "?periodicity=daily"
+        )
+
+    def _monthly_energy_url(self) -> str:
+        if self._setup_id is None:
+            raise AtlanticError("No valid setup identifier")
+        return (
+            API_ORIGIN + f"/magellan/setups/{self._setup_id}/consumptions"
+            "?periodicity=monthly"
         )
 
     @staticmethod
@@ -245,6 +263,9 @@ class AtlanticReadOnlyClient:
             self._consumption_disabled = False
             self.consumption_summary = {"state": "nie_sprawdzono"}
             self.energy_daily = {}  # Never mix accounts/setup IDs.
+            self._monthly_probe_due = datetime.min.replace(tzinfo=timezone.utc)
+            self._monthly_probe_disabled = False
+            self.monthly_energy_summary = {"state": "nie_sprawdzono"}
             self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
             self._compressor_probe_disabled = False
             self._compressor_cache = {}
@@ -456,3 +477,48 @@ class AtlanticReadOnlyClient:
         except (aiohttp.ClientError, TimeoutError, ValueError, TypeError, OverflowError, AtlanticError):
             self.consumption_summary = {"state": "blad_polaczenia"}
 
+
+    async def async_probe_monthly_energy(self) -> None:
+        """Optional setup-only monthly GET, at most every six hours.
+
+        The returned numeric energy values are never exported by this probe,
+        and producedQuantity is NOT assumed to represent thermal heat.
+        """
+        now = datetime.now(timezone.utc)
+        if self._monthly_probe_disabled or now < self._monthly_probe_due:
+            return
+        self._monthly_probe_due = now + timedelta(hours=6)
+        if self._setup_id is None or self._token is None:
+            self.monthly_energy_summary = {"state": "brak_id_lub_sesji"}
+            return
+        try:
+            self._ensure_not_throttled()
+            async with self._request(
+                "GET", self._monthly_energy_url(),
+                headers={
+                    "Authorization": "Bearer " + self._token,
+                    "Accept": "application/json",
+                },
+            ) as response:
+                if response.status == 429:
+                    self._note_rate_limited(response)
+                    self.monthly_energy_summary = {"state": "limit_zapytan"}
+                    return
+                if response.status in (403, 404, 405):
+                    self._monthly_probe_disabled = True
+                    self.monthly_energy_summary = {"state": "endpoint_niedostepny"}
+                    return
+                if response.status == 401:
+                    self._token = None
+                    self.monthly_energy_summary = {"state": "brak_autoryzacji"}
+                    return
+                if response.status != 200:
+                    self.monthly_energy_summary = {"state": "blad_http"}
+                    return
+                payload = await response.json()
+            self.monthly_energy_summary = monthly_energy_shape(payload)
+        except AtlanticRateLimited:
+            self.monthly_energy_summary = {"state": "limit_zapytan"}
+        except (aiohttp.ClientError, TimeoutError, TypeError, ValueError,
+                OverflowError, AtlanticError):
+            self.monthly_energy_summary = {"state": "blad_polaczenia"}
