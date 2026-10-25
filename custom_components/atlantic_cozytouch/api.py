@@ -243,7 +243,115 @@ class AtlanticReadOnlyClient:
             self._consumption_disabled = False
             self.consumption_summary = {"state": "nie_sprawdzono"}
             self.energy_daily = {}  # Never mix accounts/setup IDs.
+            self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
+            self._compressor_probe_disabled = False
+            self.compressor_probe_summary = {"state": "nie_sprawdzono"}
+        # IDs come only from the authenticated account's setup snapshot.
+        hosts = compressor_host_devices(devices)
+        self._compressor_device_ids = {
+            d["id"] for d in hosts[:2] if self._valid_device_id(d["id"])
+        }
         return devices
+
+    async def async_probe_compressor_capabilities(self, devices: list[dict]) -> None:
+        """Optional read-only device GET when setupviewv2 omits compressor data.
+
+        Up to two GETs per fifteen minutes, for IDs from this authenticated
+        account. Only known compressor capabilities enter telemetry. Neither
+        raw measurements nor device identifiers enter diagnostic status.
+        """
+        now = datetime.now(timezone.utc)
+        if self._compressor_probe_disabled or now < self._compressor_probe_due:
+            return
+        self._compressor_probe_due = now + timedelta(minutes=15)
+        if self._token is None:
+            self.compressor_probe_summary = {"state": "brak_sesji"}
+            return
+        hosts = [
+            d for d in compressor_host_devices(devices)
+            if d["id"] in self._compressor_device_ids
+        ][:2]
+        if not hosts:
+            self.compressor_probe_summary = {"state": "brak_numerycznego_id_pompy"}
+            return
+        need_probe = [
+            d for d in hosts
+            if not {24, 27, 51, 72}.issubset(set(d["reported_capability_ids"]))
+        ]
+        if not need_probe:
+            self.compressor_probe_summary = {"state": "parametry_juz_w_odczycie_glownym"}
+            return
+
+        gained = 0
+        tried = 0
+        for device in need_probe:
+            try:
+                self._ensure_not_throttled()
+                async with self._request(
+                    "GET", self._compressor_capabilities_url(device["id"]),
+                    headers={
+                        "Authorization": "Bearer " + self._token,
+                        "Accept": "application/json",
+                    },
+                ) as response:
+                    tried += 1
+                    if response.status == 429:
+                        self._note_rate_limited(response)
+                        self.compressor_probe_summary = {"state": "limit_zapytan"}
+                        return
+                    if response.status in (403, 404, 405):
+                        self._compressor_probe_disabled = True
+                        self.compressor_probe_summary = {"state": "endpoint_niedostepny"}
+                        return
+                    if response.status == 401:
+                        self._token = None
+                        self.compressor_probe_summary = {"state": "brak_autoryzacji"}
+                        return
+                    if response.status != 200:
+                        self.compressor_probe_summary = {"state": "blad_http"}
+                        return
+                    payload = await response.json()
+                if not isinstance(payload, list) or len(payload) > 1024:
+                    self.compressor_probe_summary = {"state": "niepoprawna_odpowiedz"}
+                    return
+                sanitized = extract_devices([{"devices": [
+                    {"deviceId": device["id"], "capabilities": payload}
+                ]}])
+                if len(sanitized) != 1:
+                    self.compressor_probe_summary = {"state": "niepoprawna_odpowiedz"}
+                    return
+                source = sanitized[0]
+                for cap_id in (24, 27, 51, 72):
+                    if cap_id not in source["reported_capability_ids"]:
+                        continue
+                    if cap_id not in device["reported_capability_ids"]:
+                        gained += 1
+                    fresh_value = source["values"].get(cap_id)
+                    old_timestamp = device.get("updated_at", {}).get(cap_id)
+                    new_timestamp = source.get("updated_at", {}).get(cap_id)
+                    if (
+                        fresh_value is not None
+                        and (device["values"].get(cap_id) is None
+                             or (type(new_timestamp) is int
+                                 and (type(old_timestamp) is not int
+                                      or new_timestamp >= old_timestamp)))
+                    ):
+                        device["values"][cap_id] = fresh_value
+                        if type(new_timestamp) is int:
+                            device.setdefault("updated_at", {})[cap_id] = new_timestamp
+                    device["reported_capability_ids"] = sorted(
+                        set(device["reported_capability_ids"]) | {cap_id}
+                    )
+            except (AtlanticRateLimited, aiohttp.ClientError, TimeoutError,
+                    ValueError, TypeError, OverflowError, AtlanticError):
+                self.compressor_probe_summary = {"state": "blad_polaczenia"}
+                return
+        self.compressor_probe_summary = {
+            "state": "uzupelniono" if gained else "brak_nowych_parametrow",
+            "uzupelnione_parametry": gained,
+            "sprawdzone_urzadzenia": tried,
+        }
+
 
     async def async_probe_consumptions(self) -> None:
         """Optional 15-minute diagnostic GET; never affects normal telemetry.
