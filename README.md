@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.13 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.14 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,13 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.14 — naprawa badania historii miesięcznej urządzenia
+
+- W sondzie `Historia energii Atlantic · odczyt urządzenia` zmieniono kolejność na **monthly przed daily**: błąd HTTP 400/500 w historii dziennej nie pomija już historii miesięcznej, czyli jedynego możliwego kandydata dla COP miesięcznego.
+- Atrybuty `monthly.http_status` i `daily.http_status` pokazują wyłącznie numeryczne kody HTTP (np. 200, 400, 500), bez URL, seriali, tokenów, surowych odpowiedzi lub prywatnych wartości energii.
+- Autoryzacja 401 i limit 429 nadal natychmiast przerywają sondę bez następnych żądań; 403/404/405 są raportowane dla obu metod, bez błędnego pominięcia próbki monthly.
+- To **poprawka diagnostyczna**, jeszcze nie odblokowanie COP. Historia całej instalacji w październiku 2026 nie zgłasza dodatniej `producedQuantity`; bez potwierdzonego źródła wytworzonego ciepła nowy licznik COP nie może zostać podany jako wiarygodny.
 
 ## v0.5.13 — badanie źródła wyprodukowanego ciepła w API
 
