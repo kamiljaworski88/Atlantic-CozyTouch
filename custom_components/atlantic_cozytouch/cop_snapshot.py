@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from math import isfinite
 
 from .cop_accumulator import CopEnergyAccumulator
+from .heater_evidence import assess_heaters
 
 HEAT_FACTOR = 4.186 / 60.0   # water, kW / (L/min * Kelvin)
 WH_PER_RAW = 1.0             # candidate vendor 0.001 kWh per raw increment
@@ -124,6 +125,7 @@ class HydraulicCopEstimator:
             "temperature_evidence": "nie_sprawdzono",
             "confidence": "brak",
             "counter_scale": "eksperymentalna_0_001_kWh_na_jednostke",
+            "heater_evidence": None,
             "observation_method": "kolejne_udane_snapshoty_ha",
             "accumulated": self.accumulator.snapshot(),
         }
@@ -208,18 +210,10 @@ class HydraulicCopEstimator:
             self.metrics["temperature_evidence"] = "zmiana_do_15_minut"
             self.metrics["confidence"] = "umiarkowana"
 
-        if any(d.get("values", {}).get(64) is True for d in devices):
-            self._reject("grzalka_cwu_aktywna_niepelny_bilans_pradu")
-            return
-        # Explicit electrical resistance / backup power is not proven to be
-        # included in ID57/59; refuse hydraulic COP rather than make it look
-        # artificially efficient. The capabilities may be absent on a model.
-        if any(
-            (_num(d.get("values", {}).get(cap)) or 0) > 0
-            for d in devices for cap in (8, 9, 11)
-        ):
-            self._reject("grzalka_wspomagajaca_aktywna_niepelny_bilans")
-            return
+        # Heater evidence is assessed after basic hydraulic diagnostics so
+        # Delta T remains visible even if a *confirmed* heater status blocks.
+        # ID8/9/11 raw=3000 exceeds catalogue max=20 kW and is NOT reliable
+        # proof of an active heater in this model.
         # An explicit compressor OFF signal overrides hydraulic speculation;
         # unknown compressor states are allowed but reduce confidence.
         compressor = [
@@ -260,6 +254,15 @@ class HydraulicCopEstimator:
             self._reject("moc_cieplna_poza_zakresem")
             return
         self.metrics["thermal_kw"] = round(thermal, 3)
+        heater = assess_heaters(devices)
+        self.metrics["heater_evidence"] = {
+            key: value for key, value in heater.items() if key != "block_reason"
+        }
+        if heater["block_reason"]:
+            self._reject(heater["block_reason"])
+            return
+        if heater["uncertain"]:
+            self.metrics["confidence"] = "niska"
         mode_stamp = _stamp(interface, 91)
         current = _Sample(
             source_key=str(interface["id"]) + ":" + str(generator["id"]),
