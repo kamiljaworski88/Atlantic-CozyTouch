@@ -164,10 +164,17 @@ def energy_capabilities_summary(devices: list[dict]) -> dict:
     mask = 0
     for item in masks:
         mask |= item
+    # Vendor enum HomeNRJConsCapabilities defines only bits 1..64:
+    # gas heating=1, electricity CO=2, cooling=4, gas DHW=8,
+    # electricity CWU=16, fuel heat=32, fuel DHW=64.
+    # The 256 and 1024 bits observed on this pump have NO confirmed meaning.
+    # They must never be reported as measured/available heat production.
     return {
         "status": "odczytany",
         "prad_co": bool(mask & 2),
         "prad_cwu": bool(mask & 16),
-        "produkcja_ciepla_co": bool(mask & 256),
-        "produkcja_ciepla_cwu": bool(mask & 1024),
+        "produkcja_ciepla_co": None,
+        "produkcja_ciepla_cwu": None,
+        "niezdefiniowane_bity_id164": mask & ~127,
+        "maska_nie_potwierdza_produkcji_ciepla": True,
     }
