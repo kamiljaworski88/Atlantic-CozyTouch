@@ -11,6 +11,7 @@ from homeassistant.core import HomeAssistant
 from homeassistant.exceptions import ConfigEntryAuthFailed
 from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
+from homeassistant.helpers.storage import Store
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
 from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
@@ -38,6 +39,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         )
     )
 
+    # Store only anonymous estimated energy sums in HA's local .storage,
+    # segregated by config entry. No cloud writes or device identifiers.
+    cop_store = Store(hass, 1, f"{DOMAIN}.cop_accumulated_{entry.entry_id}")
+    stored = await cop_store.async_load()
+    if stored is not None:
+        cop_monitor.restore_accumulated(stored)
+
     async def update():
         try:
             devices = await client.async_read()
@@ -58,7 +66,12 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             observed_at = datetime.now(UTC)
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
+            old_intervals = cop_monitor.accumulated_intervals
             cop_monitor.ingest(devices, observed_at)
+            if cop_monitor.accumulated_intervals != old_intervals:
+                # Debounced disk write: preserve accepted intervals across
+                # normal restarts without writing every poll.
+                cop_store.async_delay_save(cop_monitor.export_accumulated, 60)
             coordinator.atlantic_last_success_at = observed_at
             return devices
         except AtlanticAuthError as exc:
@@ -83,6 +96,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.atlantic_compressor = compressor_monitor
     coordinator.atlantic_energy = energy_monitor
     coordinator.atlantic_hydraulic_cop = cop_monitor
+    coordinator.atlantic_cop_store = cop_store
     coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
     coordinator.atlantic_consumptions = dict(client.consumption_summary)
     coordinator.atlantic_monthly_energy = dict(client.monthly_energy_summary)
@@ -99,6 +113,12 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     """Unload without sending any device command."""
     unloaded = await hass.config_entries.async_unload_platforms(entry, PLATFORMS)
     if unloaded:
+        # Flush once when HA unloads/reloads the integration, including
+        # user option changes. Never transmit aggregates to Atlantic.
+        coordinator = hass.data[DOMAIN][entry.entry_id]
+        await coordinator.atlantic_cop_store.async_save(
+            coordinator.atlantic_hydraulic_cop.export_accumulated()
+        )
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
 
