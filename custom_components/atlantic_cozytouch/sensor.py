@@ -82,6 +82,9 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
         AtlanticThermalEvidenceSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "live_cop"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "last_cop_co"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "last_cop_cwu"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "last_cop"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cumulative_total"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cumulative_co"),
@@ -689,7 +692,10 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
 
     LABELS = {
         "cop": ("COP Atlantic · szacunkowy", None),
-        "last_cop": ("COP Atlantic · ostatni poprawny szacunek (12 h)", None),
+        "live_cop": ("COP Atlantic · aktualna próbka (chwilowy)", None),
+        "last_cop": ("COP Atlantic · ostatni zaakceptowany (historyczny)", None),
+        "last_cop_co": ("COP Atlantic · ostatni zaakceptowany CO", None),
+        "last_cop_cwu": ("COP Atlantic · ostatni zaakceptowany CWU", None),
         "cumulative_total": ("COP Atlantic · skumulowany (zaakceptowane próbki)", None),
         "cumulative_co": ("COP Atlantic · skumulowany CO (zaakceptowane próbki)", None),
         "cumulative_cwu": ("COP Atlantic · skumulowany CWU (zaakceptowane próbki)", None),
@@ -721,7 +727,11 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
     def available(self):
         # Historical accepted intervals remain usable during a transient
         # Atlantic cloud failure; do not erase them with coordinator.available.
-        if self._metric.startswith("cumulative_"):
+        if self._metric.startswith("cumulative_") or self._metric in (
+            "cop", "last_cop", "last_cop_co", "last_cop_cwu"
+        ):
+            # Last accepted value is historical, not the most recent cloud
+            # sample: it must survive polls with zero energy AND outages.
             return True
         return super().available
 
@@ -730,7 +740,9 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
         summary = self._cumulative_summary()
         if summary is not None:
             return summary["cop"]
-        if not self.coordinator.last_update_success:
+        if not self.coordinator.last_update_success and self._metric not in (
+            "cop", "last_cop", "last_cop_co", "last_cop_cwu"
+        ):
             return None
         return self.coordinator.atlantic_hydraulic_cop.metrics.get(self._metric)
 
@@ -750,7 +762,37 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
                 "ograniczenie": "nie_jest_sezonowym_cop_pompy_ani_pelnym_czasem_pracy",
             }
         metrics = self.coordinator.atlantic_hydraulic_cop.metrics
+        cop_monitor = self.coordinator.atlantic_hydraulic_cop
+        if self._metric in ("last_cop_co", "last_cop_cwu"):
+            last = cop_monitor.last_cops.latest(
+                "CO" if self._metric == "last_cop_co" else "CWU"
+            )
+        else:
+            last = cop_monitor.last_cops.latest()
+        last_at = None
+        age_hours = None
+        if last is not None:
+            last_at = last["at"]
+            try:
+                seconds = (datetime.now(UTC) - datetime.fromisoformat(last_at)).total_seconds()
+                if seconds >= 0:
+                    age_hours = round(seconds / 3600, 2)
+            except (TypeError, ValueError, OverflowError):
+                pass
+        is_last_sample = self._metric in (
+            "cop", "last_cop", "last_cop_co", "last_cop_cwu"
+        )
         return {
+            "cop_ostatni_zapisany_historyczny": is_last_sample,
+            "cop_pochodzi_z_biezacej_probki": (
+                self._metric == "live_cop" and metrics.get("live_cop") is not None
+            ),
+            "ostatni_zaakceptowany_cop_utc": last_at,
+            "wiek_ostatniego_wyniku_h": age_hours,
+            "ostatni_zaakceptowany_obieg": last["circuit"] if last else None,
+            "ostatni_zaakceptowany_poziom_pewnosci": last["quality"] if last else None,
+            "ostatni_zaakceptowany_typ_okna": last["source"] if last else None,
+            "ostatni_wynik_nie_jest_aktualnym_cop": is_last_sample,
             "aktywny_obieg": metrics.get("circuit"),
             "topologia_zrodel": metrics.get("topology"),
             "wiek_probek_s": metrics.get("source_ages_seconds"),
