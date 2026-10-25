@@ -2,16 +2,53 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.4 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.5 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
-- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz odczyty `GET`: `/magellan/cozytouch/setupviewv2`, `/magellan/setups/{setupId}/consumptions?periodicity=daily` i `/magellan/capabilities/?deviceId=…` (wyłącznie potwierdzone ID pompy przypisane do zalogowanego konta).
+- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz odczyty `GET`: `/magellan/cozytouch/setupviewv2`, `/magellan/setups/{setupId}/consumptions?periodicity=daily`, `/magellan/setups/{setupId}/consumptions?periodicity=monthly` i `/magellan/capabilities/?deviceId=…` (wyłącznie potwierdzone ID pompy przypisane do zalogowanego konta).
 - Bez serwerów pośredniczących autora integracji, analityki i eksportu danych. **Integracja wymaga chmury producenta**, a nie działa lokalnie/offline.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.5 — weryfikacja miesięcznej produkcji ciepła w API
+
+Po porównaniu ze sterownikiem w październiku 2026 mamy zbliżone
+wskazania: ID57 = 26,845 kWh (sterownik: 26 kWh),
+ID59 = 10,679 kWh (sterownik: 10 kWh).
+Potwierdzają one prawdopodobne przypisanie ID57 do CO, ID59 do CWU,
+z konwersją surowych jednostek /1000. Okres i reguły resetu tych
+liczników w API nie są jednak jeszcze udowodnione.
+
+- **Nowy bezpieczny GET** `/magellan/setups/{setupId}/consumptions?periodicity=monthly`
+  przez oficjalną chmurę Atlantic, maksymalnie **raz na 6 godzin**
+  na zalogowaną instalację. Bez pośredników i bez komend zapisu.
+- Nowa encja diagnostyczna
+  `Historia energii Atlantic · miesięczna kontrola`
+  pokazuje tylko anonimowe **liczby** serii i wystąpień
+  `consumedQuantity` / `producedQuantity`, ich kody typu,
+  kategorii i jednostki. **Nie publikuje samych wartości,
+  identyfikatorów, kosztów ani dat.**
+- Nawet dodatni `producedQuantity` **nie dowodzi produkcji
+  ciepła** (może opisywać produkcję elektryczną).
+  Bez jednoznacznego znaczenia, jednostek i wspólnego miesiąca
+  nie tworzymy fikcyjnego COP miesięcznego.
+- Dotychczasowe sensory obliczania **szacunkowego COP chwilowego**
+  pozostają bez zmian. Sensor statusu COP zyskuje informację
+  o wyniku testu miesięcznego API.
+- Atrybuty sensorów sprężarki pokazują wynik dodatkowego
+  odczytu v0.5.4 (także gdy są `unknown`). Nie zmieniamy
+  odczytów ID24/27/51/72 ani ich unikalnych identyfikatorów.
+
+**Punkt odniesienia tylko do porównania:** sterownik wyświetla
+26/10 kWh energii elektrycznej i 76/36 kWh ciepła CO/CWU,
+co daje za dotychczasową część miesiąca COP ~2,92 / 3,60,
+łącznie ~3,11 (po zaokrągleniu). Te liczby **nie są wpisane
+na stałe do HA**. Automatycznego, wiarygodnego miesięcznego
+COP nie można udostępnić, dopóki API nie poda zidentyfikowanej
+energii cieplnej.
 
 ## v0.5.4 — dodatkowy odczyt diagnostyczny sprężarki
 

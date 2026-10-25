@@ -251,7 +251,7 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         await client.async_probe_consumptions()  # 15-minute minimum interval.
         self.assertEqual(len(session.calls), 3)
         for bad in (target + "&admin=true", target.replace("123", "124"),
-                    target.replace("daily", "monthly"),
+                    target.replace("daily", "yearly"),
                     API_ORIGIN + "/magellan/executions/writecapability"):
             with self.assertRaises(AtlanticError):
                 client._request("GET", bad)
@@ -427,6 +427,81 @@ class TestDeviceCompressorProbe(unittest.IsolatedAsyncioTestCase):
                 await client.async_probe_compressor_capabilities(devices)
                 self.assertEqual([m for m, u, _ in session.calls if "/capabilities/?deviceId=" in u], [])
                 self.assertEqual(client.compressor_probe_summary["state"], "brak_numerycznego_id_pompy")
+
+
+class MonthlyEnergySession(ConsumptionSession):
+    def __init__(self, status=200, monthly_payload=None):
+        super().__init__(setup_id=123)
+        self.monthly_status = status
+        self.monthly_payload = monthly_payload if monthly_payload is not None else [
+            {"type": 1, "unit": 1, "category": 1,
+             "deviceId": "SENSITIVE_DEVICE", "consumptionPeriods": [
+                 {"date": 1780000000, "consumedQuantity": 20.45,
+                  "producedQuantity": 67.9, "cost": 99999}
+             ]},
+        ]
+
+    def get(self, url, **kwargs):
+        if "/consumptions?periodicity=monthly" in url:
+            self.calls.append(("GET", url, kwargs))
+            return Reply(self.monthly_status, self.monthly_payload)
+        return super().get(url, **kwargs)
+
+
+class TestMonthlyEndpoint(unittest.IsolatedAsyncioTestCase):
+    async def test_read_only_monthly_endpoint_and_strict_allowlist(self):
+        session = MonthlyEnergySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "faked")
+        target = API_ORIGIN + "/magellan/setups/123/consumptions?periodicity=monthly"
+        with self.assertRaises(AtlanticError):
+            client._request("GET", target)
+        await client.async_read()
+        for method, url in (
+            ("POST", target),
+            ("GET", target + "&allAccounts=true"),
+            ("GET", target.replace("123", "124")),
+            ("GET", target.replace("monthly", "yearly")),
+            ("GET", "https://example.invalid/steal"),
+        ):
+            with self.subTest(method=method, url=url), self.assertRaises(AtlanticError):
+                client._request(method, url)
+        await client.async_probe_monthly_energy()
+        self.assertEqual(client.monthly_energy_summary["state"], "dostepna")
+        self.assertEqual(client.monthly_energy_summary["okresy_z_dodatnia_produkcja"], 1)
+        self.assertFalse(client.monthly_energy_summary["energia_cieplna_zweryfikowana"])
+        self.assertNotIn("SENSITIVE_DEVICE", str(client.monthly_energy_summary))
+        self.assertNotIn("67.9", str(client.monthly_energy_summary))
+        self.assertEqual(len([x for x in session.calls if "monthly" in x[1]]), 1)
+        await client.async_probe_monthly_energy()
+        self.assertEqual(len([x for x in session.calls if "monthly" in x[1]]), 1)
+        for _method, _url, opts in session.calls:
+            self.assertIs(opts["allow_redirects"], False)
+            self.assertNotIn("proxy", opts)
+            self.assertNotIn("ssl", opts)
+
+    async def test_monthly_403_404_429_do_not_break_setup_poll(self):
+        for status, expected in ((403, "endpoint_niedostepny"),
+                                 (404, "endpoint_niedostepny"),
+                                 (429, "limit_zapytan"),
+                                 (500, "blad_http")):
+            with self.subTest(status=status):
+                session = MonthlyEnergySession(status=status)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "faked")
+                devices = await client.async_read()
+                await client.async_probe_monthly_energy()
+                self.assertEqual(client.monthly_energy_summary["state"], expected)
+                self.assertEqual(devices[0]["values"][164], 1298.0)
+
+    async def test_setup_change_invalidates_monthly_diagnostic(self):
+        session = MonthlyEnergySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "faked")
+        await client.async_read()
+        await client.async_probe_monthly_energy()
+        session.setup_payload[0]["id"] = 456
+        await client.async_read()
+        self.assertEqual(client.monthly_energy_summary, {"state": "nie_sprawdzono"})
+        self.assertEqual(client._monthly_energy_url(),
+                         API_ORIGIN + "/magellan/setups/456/consumptions?periodicity=monthly")
 
 
 if __name__ == "__main__":

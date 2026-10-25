@@ -74,6 +74,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
+        AtlanticMonthlyEnergyProbeSensor(coordinator, entry.entry_id),
         AtlanticCompressorProbeSensor(coordinator, entry.entry_id),
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
@@ -237,6 +238,9 @@ class AtlanticCompressorDerivedSensor(CoordinatorEntity, SensorEntity):
                 return {
                     "brakujace_id_w_api": missing,
                     "status": "brak_telemetrii" if missing else "zalezy_od_danych_i_ciaglosci_odczytow",
+                    "wynik_dodatkowego_odczytu": getattr(
+                        self.coordinator, "atlantic_compressor_probe", {}
+                    ).get("state", "nie_sprawdzono"),
                 }
         return {"status": "brak_urzadzenia_w_api"}
 
@@ -370,6 +374,29 @@ class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
         return dict(getattr(self.coordinator, "atlantic_compressor_probe", {}))
 
 
+class AtlanticMonthlyEnergyProbeSensor(CoordinatorEntity, SensorEntity):
+    """Anonymized monthly history: production field is not confirmed heat."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Historia energii Atlantic · miesięczna kontrola"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:calendar-search"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_monthly_energy_probe"
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, "atlantic_monthly_energy", {}).get(
+            "state", "nie_sprawdzono"
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return dict(getattr(self.coordinator, "atlantic_monthly_energy", {}))
+
+
 class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
     """Safe API endpoint status: no raw energy values, tokens, or setup ID."""
 
@@ -458,6 +485,9 @@ class AtlanticCopReadinessSensor(CoordinatorEntity, SensorEntity):
     def extra_state_attributes(self):
         s = getattr(self.coordinator, "atlantic_consumptions", {})
         return {
+            "stan_historii_miesiecznej": getattr(
+                self.coordinator, "atlantic_monthly_energy", {}
+            ).get("state", "nie_sprawdzono"),
             "rekordy_produkcji_ciepla": s.get("okresy_z_energia_wyprodukowana", 0),
             "rekordy_dodatniej_produkcji": s.get("okresy_z_dodatnia_produkcja", 0),
             "deklarowane_pomiary_id164": energy_capabilities_summary(self.coordinator.data or []),

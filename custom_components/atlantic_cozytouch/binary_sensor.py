@@ -101,6 +101,9 @@ class AtlanticCompressorStateSensor(AtlanticReadOnlyBinarySensor):
             "zrodlo_stanu": source,
             "ostroznosc": "unknown oznacza brak wiarygodnej telemetrii",
             "odczyt_zdalny_bez_sterowania": True,
+            "wynik_dodatkowego_odczytu": getattr(
+                self.coordinator, "atlantic_compressor_probe", {}
+            ).get("state", "nie_sprawdzono"),
         }
 
 
