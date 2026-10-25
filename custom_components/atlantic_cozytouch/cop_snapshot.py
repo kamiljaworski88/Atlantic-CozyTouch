@@ -28,8 +28,10 @@ MAX_LIVE_AGE_S = 900
 # A cumulative meter can legitimately keep last-change time through extended
 # inactivity. Only the *new*, positive increment must have a recent stamp.
 MAX_METER_LAST_CHANGE_S = 366 * 86_400
-MAX_TEMP_LAST_CHANGE_S = 43_200  # 12h *only* behind explicit opt-in
-MAX_TEMP_PAIR_SKEW = 600
+MAX_HYDRAULIC_LAST_CHANGE_S = 43_200  # 12h *only* behind explicit opt-in
+# modificationDate from Magellan is last VALUE change (NOT observation time).
+# Do not compare the dates of two stable water sensors as if they were
+# clock-synchronized measurements.
 MIN_HEATING_DT_K = 0.75       # low-trust territory below 1.5K
 MAX_HEATING_DT_K = 25
 # Last accepted COP is a *historical* reading; no TTL hides it.
@@ -87,6 +89,8 @@ class _Sample:
     supply_stamp: int
     return_stamp: int
     flow_stamp: int
+    flow: float
+    stale_flow: bool
     stale_temperature: bool
 
 
@@ -178,6 +182,8 @@ class HydraulicCopEstimator:
             "live_cop": None,
             "circuit": None, "topology": "nieustalona",
             "source_ages_seconds": {},
+            "last_change_skew_temperatures_seconds": None,
+            "hydraulic_observation_evidence": "ostatnia_zmiana_nie_data_pomiaru",
             "last_cop": latest["value"] if latest else None,
             "last_cop_at": latest["at"] if latest else None,
             "last_cop_circuit": latest["circuit"] if latest else None,
@@ -253,8 +259,17 @@ class HydraulicCopEstimator:
             return
         flow_age = ages["przeplyw"]
         electricity_age = ages["licznik_pradu"]
-        if flow_age > MAX_LIVE_AGE_S:
+        # A constant valid flow can keep its last-change timestamp for
+        # hours. Sampling the setup again doesn't prove the sensor is fresh,
+        # but neither does an unchanged value prove failure. Experimental
+        # opt-in, bounded last-change age and cross-snapshot invariants are
+        # required to use unchanged old hydraulic values.
+        stale_flow = flow_age > MAX_LIVE_AGE_S
+        if flow_age > MAX_HYDRAULIC_LAST_CHANGE_S:
             self._reject("nieaktualny_przeplyw")
+            return
+        if stale_flow and not self.allow_unique_cross_device:
+            self._reject("stary_znacznik_przeplywu_wymaga_opt_in")
             return
         # Don't reject the *baseline* because the cumulative meter has not
         # changed for >15 minutes. When there is no increment there is no COP.
@@ -271,16 +286,21 @@ class HydraulicCopEstimator:
         sup_ts, ret_ts = _stamp(generator, 109), _stamp(generator, 116)
         elec_ts, flow_ts = _stamp(interface, cap), _stamp(interface, 112)
         assert None not in (sup_ts, ret_ts, elec_ts, flow_ts)
+        self.metrics["last_change_skew_temperatures_seconds"] = abs(sup_ts - ret_ts)
         old_temp = ages["zasilanie"] > MAX_LIVE_AGE_S or ages["powrot"] > MAX_LIVE_AGE_S
         if old_temp:
             if not self.allow_unique_cross_device:
                 self._reject("stare_znaczniki_temperatur_wymagaja_opt_in")
                 return
-            if (max(ages["zasilanie"], ages["powrot"]) > MAX_TEMP_LAST_CHANGE_S
-                    or abs(sup_ts - ret_ts) > MAX_TEMP_PAIR_SKEW):
+            if max(ages["zasilanie"], ages["powrot"]) > MAX_HYDRAULIC_LAST_CHANGE_S:
                 self._reject("nieaktualne_pomiary_hydrauliczne")
                 return
-            self.metrics["temperature_evidence"] = "stale_wartosci_w_chmurze_niska_pewnosc"
+            # The dates may differ by hours while one value stays exactly
+            # constant. The paired values must stay unchanged in every
+            # observed hydraulic interval while at least one is old.
+            self.metrics["temperature_evidence"] = (
+                "stare_znaczniki_wartosci_niska_pewnosc"
+            )
             self.metrics["confidence"] = "niska"
         else:
             # With changed temperatures, a large discontinuity in vendor
@@ -298,6 +318,10 @@ class HydraulicCopEstimator:
                 return
             self.metrics["temperature_evidence"] = "zmiana_do_15_minut"
             self.metrics["confidence"] = "umiarkowana"
+
+        if stale_flow:
+            self.metrics["confidence"] = "niska"
+            self.metrics["temperature_evidence"] += "_przeplyw_ze_starym_znacznikiem"
 
         # Heater evidence is assessed after basic hydraulic diagnostics so
         # Delta T remains visible even if a *confirmed* heater status blocks.
@@ -359,7 +383,7 @@ class HydraulicCopEstimator:
             electric_raw=raw, electric_stamp=elec_ts,
             mode_stamp=mode_stamp, thermal_kw=thermal, supply=supply, ret=ret,
             supply_stamp=sup_ts, return_stamp=ret_ts, flow_stamp=flow_ts,
-            stale_temperature=old_temp,
+            flow=flow, stale_flow=stale_flow, stale_temperature=old_temp,
         )
         # A short 3-6min "instant" ratio from one raw ID57/59 step is NOT
         # temporally aligned with the heat integral; we observed false COP=9.44

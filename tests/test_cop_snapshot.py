@@ -248,9 +248,74 @@ class SnapshotEstimatorTest(unittest.TestCase):
                          "nieaktualne_pomiary_hydrauliczne")
         self.assertIsNone(self.est.metrics["cop"])
 
-    def test_flow_older_than_15m_is_rejected(self):
+    def test_flow_with_no_change_for_25min_is_accepted_only_with_opt_in(self):
         self.est.ingest(capture(self.t, flow_age=1500), self.t)
+        self.assertEqual(
+            self.est.metrics["status"],
+            "okno_energii_czekamy_na_pierwszy_zaobserwowany_skok_licznika",
+        )
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        without_optin = mod.HydraulicCopEstimator()
+        without_optin.ingest(capture(self.t, flow_age=1500, separate=False), self.t)
+        self.assertEqual(
+            without_optin.metrics["status"],
+            "stary_znacznik_przeplywu_wymaga_opt_in",
+        )
+
+    def test_flow_older_than_12h_is_rejected(self):
+        self.est.ingest(capture(self.t, flow_age=45000), self.t)
         self.assertEqual(self.est.metrics["status"], "nieaktualny_przeplyw")
+
+    def test_actual_user_timestamp_skew_does_not_mislabel_last_change_as_poll_time(self):
+        self.est.ingest(
+            capture(
+                self.t, flow_age=594, supply_age=594,
+                return_age=7759, electric_age=290,
+                supply=34.5, ret=30.8,
+            ), self.t,
+        )
+        self.assertEqual(
+            self.est.metrics["status"],
+            "okno_energii_czekamy_na_pierwszy_zaobserwowany_skok_licznika",
+        )
+        self.assertEqual(
+            self.est.metrics["last_change_skew_temperatures_seconds"], 7165
+        )
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.accumulated_intervals, 0)
+
+    def test_old_return_unchanged_through_two_meter_events_only_estimates_low_confidence(self):
+        # Hydraulic value timestamps differ by two hours, but the same
+        # *values* are independently observed by HA across a complete 15m
+        # interval. No claims of vendor measurement freshness are made.
+        for minute in (0, 3, 6, 9, 12, 15, 18):
+            co = 10000 if minute == 0 else 10100 if minute < 18 else 10350
+            meter_min = -10 if minute == 0 else 3 if minute < 18 else 18
+            self.observe(
+                minute, co=co, meter_min=meter_min,
+                flow_age=594 + minute*60,
+                supply_age=594 + minute*60,
+                return_age=7759 + minute*60,
+                supply=34.5, ret=30.8,
+            )
+        self.assertEqual(self.est.accumulated_intervals, 1)
+        self.assertEqual(
+            self.est.metrics["status"],
+            "szacunek_niska_pewnosc_pelne_okno_licznika",
+        )
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+
+    def test_dynamic_old_flow_values_must_not_enter_window(self):
+        self.observe(0, flow_age=1500)
+        self.observe(3, co=10100, meter_min=3, flow_age=1680)
+        self.observe(6, co=10100, meter_min=3, flow_age=1860, flow=19.0)
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertEqual(
+            self.est.metrics["status"],
+            "okno_energii_zmiana_trybu_lub_niespojne_czujniki",
+        )
 
     def test_missing_timestamp_fails_closed(self):
         devices = capture(self.t)

@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.21 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.22 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.22 — poprawna interpretacja ostatniej zmiany czujników hydraulicznych
+
+- Zgłoszenie z HA: `nieaktualne_pomiary_hydrauliczne` przy znacznikach ID109 = 594 s, ID116 = 7759 s, ID112 = 594 s, ID57 = 290 s. Rozbieżność timestampów ID109/116 wynosi **7165 s**, ale Atlantic `modificationDate` jest znacznikiem **ostatniej zmiany wartości**, nie pewnym czasem pomiaru. Porównywanie go z innym czujnikiem z limitem 600 sekund dawało nieuzasadnioną blokadę.
+- Usunięto wymóg zbliżonych dat zmiany zasilania i powrotu dla **świadomie włączonego eksperymentalnego powiązania obiegów**. Zamiast tego wymagamy zachowania wartości między kolejnymi zaobserwowanymi snapshotami przez **całe** okno COP (12–60 minut), maksymalnej daty ostatniej zmiany hydrauliki do **12 godzin**, poprawnego przepływu/temperatur i dwóch faktycznych skoków energii elektrycznej.
+- Dla `ID112` (przepływ) też nie traktujemy 15 min od ostatniej zmiany jako czasu ostatniego pomiaru. W opcji eksperymentalnej dopuszczamy niezmieniony przepływ do 12 h, ale przy zmianie wcześniej starego wskazania w środku okna następuje jego **odrzucenie**. Bez opt-in przepływ starszy niż 15min nadal blokuje COP.
+- Nowe atrybuty `rozbieznosc_znacznikow_temperatur_s` i `semantyka_znacznikow` służą do diagnostyki. Wyniki wykorzystujące stare znaczniki pozostają **niskiej pewności** i nigdy nie są prezentowane jako aktualne, zweryfikowane wartości producenta.
+- To **nie gwarantuje**, że czujnik rzeczywiście był na nowo zmierzony przez Atlantic. Brak świeżego zwrotnego potwierdzenia uniemożliwia certyfikowany COP. Nie usuwamy poprzedniego, historycznego i potencjalnie błędnego COP 9,44, ani nie mieszamy dodatkowych okresów po restarcie bez zaobserwowania pełnego okna.
+- Brak nowych połączeń, endpointów, zapisów do pompy i serwerów pośredniczących.
 
 ## v0.5.21 — naprawa pomiaru przy skokowym liczniku: eliminacja fałszywego COP 9,44
 

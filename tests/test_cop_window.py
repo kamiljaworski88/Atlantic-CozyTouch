@@ -21,7 +21,7 @@ MODE_TS = int(START.timestamp()) - 500
 
 def sample(minutes, raw, meter_minute, heat_kw=3.0, *, circuit="CO",
            source="private_device", mode_stamp=MODE_TS, supply=35.0, ret=31.0,
-           stale=True, flow_stamp=None):
+           stale=True, flow_stamp=None, flow=17.16, stale_flow=False):
     when = START + timedelta(minutes=minutes)
     stamp = int(when.timestamp())
     return SimpleNamespace(
@@ -37,6 +37,8 @@ def sample(minutes, raw, meter_minute, heat_kw=3.0, *, circuit="CO",
         supply_stamp=stamp - 11000,
         return_stamp=stamp - 11100,
         flow_stamp=stamp - 30 if flow_stamp is None else flow_stamp,
+        flow=flow,
+        stale_flow=stale_flow,
         stale_temperature=stale,
     )
 
@@ -95,6 +97,30 @@ class TestObservedEnergyWindows(unittest.TestCase):
         self.window.ingest(sample(9, 10100, 3, circuit="CWU"))
         self.assertEqual(self.window.diagnostics()["status"],
                          "zmiana_trybu_lub_niespojne_czujniki")
+
+    def test_old_flow_change_discards_window_even_when_power_seems_valid(self):
+        self.window.ingest(sample(0, 10000, -10, flow=17.16, stale_flow=True))
+        self.window.ingest(sample(3, 10100, 3, flow=17.16, stale_flow=True))
+        self.window.ingest(sample(6, 10100, 3, flow=18.0, stale_flow=True))
+        self.assertEqual(
+            self.window.diagnostics()["status"],
+            "zmiana_trybu_lub_niespojne_czujniki",
+        )
+
+    def test_stable_old_flow_can_enter_experimental_window_without_fake_freshness(self):
+        # Stable return/flow last-change dates can differ substantially from
+        # supply's without meaning the API stopped polling them.
+        self.window.ingest(sample(0, 10000, -10, flow=17.16, stale_flow=True))
+        self.window.ingest(sample(3, 10100, 3, flow=17.16, stale_flow=True))
+        for minute in (6, 9, 12):
+            self.window.ingest(
+                sample(minute, 10100, 3, flow=17.16, stale_flow=True)
+            )
+        accepted = self.window.ingest(
+            sample(15, 10300, 15, flow=17.16, stale_flow=True)
+        )
+        self.assertIsNotNone(accepted)
+        self.assertEqual(accepted.covered_seconds, 720)
 
     def test_old_temperature_drift_without_evidence_drops_window(self):
         self.window.ingest(sample(0, 10000, -10))

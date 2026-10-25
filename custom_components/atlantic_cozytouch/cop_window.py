@@ -75,6 +75,11 @@ class ObservedElectricWindow:
             return False
         if b.flow_stamp < a.flow_stamp:
             return False
+        # A once-reported stable flow is not proven fresh when its vendor
+        # last-change timestamp is old. Reject a window if a previously
+        # stagnant flow changes without a newly confirmed continuous series.
+        if ((a.stale_flow or b.stale_flow) and a.flow != b.flow):
+            return False
         if b.electric_stamp < a.electric_stamp:
             return False
         # An old/cloud-stale temperature series is only usable if it is
