@@ -47,6 +47,7 @@ jobs:
               "custom_components.atlantic_cozytouch.energy_preview",
               "custom_components.atlantic_cozytouch.energy_daily",
               "custom_components.atlantic_cozytouch.cop_hydraulic",
+              "custom_components.atlantic_cozytouch.cop_accumulator",
               "custom_components.atlantic_cozytouch.monthly_energy_probe",
               "custom_components.atlantic_cozytouch.thermal_evidence",
           ):
@@ -113,6 +114,14 @@ jobs:
               assert audit._attr_unique_id == "atlantic_cozytouch_smoke_thermal_evidence"
               assert audit.native_value == "oczekiwanie_na_dane"
               assert audit.extra_state_attributes["cop_okresowy_gotowy"] is False
+              cumulative = [
+                  e for e in sensors
+                  if e._attr_name.startswith("COP Atlantic · skumulowany")
+              ]
+              assert len(cumulative) == 3
+              assert all(e._attr_unique_id.startswith(
+                  "atlantic_cozytouch_smoke_hydraulic_cumulative_"
+              ) for e in cumulative)
               last_cop = next(
                   e for e in sensors
                   if e._attr_name == "COP Atlantic · ostatni poprawny szacunek (12 h)"
