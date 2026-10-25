@@ -2,7 +2,9 @@
 
 Cumulative COP is a ratio of SUMS of energy, never a sum/mean of COPs.
 No history backfill, calendar/season claims, HA energy statistics or vendor IDs.
-Values reflect only intervals accepted by HydraulicCopEstimator. The electrical
+Values reflect only intervals accepted by HydraulicCopEstimator. Long entries
+represent fully observed contiguous meter-update windows, not interpolation
+between distant samples. The electrical
 Wh scale and thermal readings remain unverified estimates on this pump.
 """
 from __future__ import annotations
@@ -15,7 +17,7 @@ MAX_ENERGY_KWH = 100_000_000.0
 MAX_INTERVALS = 50_000_000
 MAX_SECONDS = 1_000_000_000
 MIN_SECONDS_PER_INTERVAL = 120
-MAX_SECONDS_PER_INTERVAL = 1200
+MAX_SECONDS_PER_INTERVAL = 3600
 
 
 def _num(value: object, maximum: float) -> float | None:
