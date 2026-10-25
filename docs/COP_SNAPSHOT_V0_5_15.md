@@ -50,7 +50,7 @@ Dla dwóch zaakceptowanych obserwacji:
   20 minut, reset licznika, zmiana trybu lub niezgodność znaczników odrzuca go.
 - Nie sumujemy okresów bez przyrostu licznika; nie dopisujemy ciepła po
   wznowieniu pracy podczas defrostu, postoju lub awarii.
-- Wykryty aktywny status grzałki CWU (64) i jawne wyłączenie sprężarki (51)
+- Wykryty aktywny status grzałki CWU (64), dodatni pobór grzałek pomocniczych (8/9/11) i jawne wyłączenie sprężarki (51)
   blokują obliczenia; niewidoczny status sprężarki zostawia niską pewność.
   Inne grzałki, odszranianie i obieg CWU mogą nadal nie być w pełni widoczne
   w tym protokole — **to istotne ograniczenie**.
