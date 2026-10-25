@@ -74,7 +74,7 @@ class _Sample:
     supply_stamp: int
     return_stamp: int
     flow_stamp: int
-    low_confidence: bool
+    stale_temperature: bool
 
 
 class HydraulicCopEstimator:
@@ -258,7 +258,7 @@ class HydraulicCopEstimator:
             electric_raw=raw, electric_stamp=elec_ts,
             mode_stamp=mode_stamp, thermal_kw=thermal, supply=supply, ret=ret,
             supply_stamp=sup_ts, return_stamp=ret_ts, flow_stamp=flow_ts,
-            low_confidence=self.metrics["confidence"] == "niska",
+            stale_temperature=old_temp,
         )
         prior = self._baseline
         self._baseline = current
@@ -294,11 +294,11 @@ class HydraulicCopEstimator:
         # never a newly measured water reading. Do not bridge a temperature
         # change whose last-change stamp is itself old/contradictory.
         if (prior.supply_stamp != sup_ts or prior.return_stamp != ret_ts):
-            if old_temp or prior.low_confidence:
+            if old_temp or prior.stale_temperature:
                 self.metrics["status"] = "zmiana_temperatur_w_niepewnym_przedziale"
                 return
         if (old_temp and (supply != prior.supply or ret != prior.ret)
-                or not old_temp and prior.low_confidence):
+                or not old_temp and prior.stale_temperature):
             self.metrics["status"] = "zmiana_jakosci_pomiarow"
             return
 
