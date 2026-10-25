@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.14 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.15 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,16 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.15 — przebudowa eksperymentalnego COP na bazie obserwowanych snapshotów
+
+- Obliczenia COP w uruchamianej integracji przełączono na `cop_snapshot.py`. Stary `cop_hydraulic.py` pozostaje wyłącznie jako moduł historyczny i nie jest używany przez koordynator.
+- Energia cieplna jest całkowana z `ID112 [l/min]` × (`ID109−ID116 [K]`) w krótkich przedziałach kolejnych udanych odczytów HA; energia elektryczna pochodzi z przyrostu `ID57` albo `ID59`, z zastosowaniem katalogowego kroku **0.001 kWh** na jednostkę surową. Mapa skali konkretnej pompy wymaga porównania z panelem.
+- `modificationDate` jest datą **ostatniej zmiany wartości**, dlatego przy świadomie włączonej opcji `experimental_cross_device_cop` można eksperymentalnie użyć niezmienionych temperatur z ostatnią zmianą starszą niż 15 minut (maks. **12 h**), tylko jeśli mamy aktualny przepływ, rosnący licznik energii oraz zgodną parę odczytów. Snapshot nie dowodzi świeżości temperatury u źródła.
+- Stare znaczniki temperatur, małe `ΔT 0.75–1.5K` lub nieznany stan sprężarki oznaczają **niski poziom pewności**. Brak przyrostu energii nie tworzy COP. Odrzucane są: reset licznika, stary przepływ/prąd, niejasne źródła, zmiana obiegu, grzałka CWU lub wykryta moc grzałek pomocniczych ID8/9/11, sprężarka jawnie wyłączona, fizycznie niespójna moc/COP i długie przerwy.
+- Nie ma nowych endpointów ani serwerów pośredniczących, zapisów do pompy i statystyk HA Energy. Sumy dotyczą **tylko zaakceptowanych przedziałów**, nie całej doby/miesiąca. Wcześniejsze sumy lokalne zostają zachowane.
+- Nowe atrybuty statusu: `pewnosc_szacunku`, `roznica_temperatur_k`, `metoda_probkowania` i `skala_pradu_nadal_do_weryfikacji`.
+- Szczegóły: [algorytm COP snapshot v0.5.15](docs/COP_SNAPSHOT_V0_5_15.md).
 
 ## v0.5.14 — naprawa badania historii miesięcznej urządzenia
 

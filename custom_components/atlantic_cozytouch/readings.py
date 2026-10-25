@@ -26,6 +26,11 @@ MAX_CAPABILITY_ID = 2_147_483_647  # Vendor also uses six-digit identifiers.
 
 CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
+    # Atlantic ProductModels catalogue: electrical backup heater power in kW.
+    # Read-only diagnostic; never infer its presence from capabilities alone.
+    8: CapabilitySpec("Moc grzałki wspomagającej CO1", unit="kW", diagnostic=True, publish_statistics=False),
+    9: CapabilitySpec("Moc grzałki wspomagającej CO2", unit="kW", diagnostic=True, publish_statistics=False),
+    11: CapabilitySpec("Moc grzałki wspomagającej CWU", unit="kW", diagnostic=True, publish_statistics=False),
     24: CapabilitySpec("Uruchomienia sprężarki", cumulative=True, diagnostic=True),
     25: CapabilitySpec("Uruchomienia pompy obiegu CO", cumulative=True, diagnostic=True),
     26: CapabilitySpec("Uruchomienia pompy obiegu CWU", cumulative=True, diagnostic=True),

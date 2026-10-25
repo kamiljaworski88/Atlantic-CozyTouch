@@ -16,7 +16,7 @@ from homeassistant.helpers.storage import Store
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
 from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
 from .compressor import CompressorMonitor
-from .cop_hydraulic import HydraulicCopEstimator
+from .cop_snapshot import HydraulicCopEstimator
 from .energy_validation import EnergyValidationMonitor
 
 _LOGGER = logging.getLogger(__name__)
