@@ -17,5 +17,16 @@
     "abort": {
       "already_configured": "This Atlantic account is already configured."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Experimental hydraulic COP",
+        "description": "Only if you have one Atlantic heat pump: allow the integration to combine flow/electricity from its interface with temperatures from its single generator. Their hydraulic relationship is not confirmed by the API. COP is an estimate, may remain unknown when idle and must not be used for energy billing.",
+        "data": {
+          "experimental_cross_device_cop": "Enable experimental COP between the unique two logical modules"
+        }
+      }
+    }
   }
 }
