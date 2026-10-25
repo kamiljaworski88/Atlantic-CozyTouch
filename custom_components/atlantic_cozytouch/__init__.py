@@ -46,6 +46,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if stored is not None:
         cop_monitor.restore_accumulated(stored)
 
+    # Independent, versioned store; legacy accumulated COP storage is never
+    # modified or reinterpreted as an individual last accepted COP sample.
+    last_cop_store = Store(hass, 1, f"{DOMAIN}.last_cop_{entry.entry_id}")
+    saved_last = await last_cop_store.async_load()
+    if saved_last is not None:
+        cop_monitor.restore_last_cops(saved_last)
+
     async def update():
         try:
             devices = await client.async_read()
@@ -67,7 +74,10 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
             old_intervals = cop_monitor.accumulated_intervals
+            old_last_cops = cop_monitor.export_last_cops()
             cop_monitor.ingest(devices, observed_at)
+            if cop_monitor.export_last_cops() != old_last_cops:
+                last_cop_store.async_delay_save(cop_monitor.export_last_cops, 60)
             if cop_monitor.accumulated_intervals != old_intervals:
                 # Debounced disk write: preserve accepted intervals across
                 # normal restarts without writing every poll.
@@ -97,6 +107,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.atlantic_energy = energy_monitor
     coordinator.atlantic_hydraulic_cop = cop_monitor
     coordinator.atlantic_cop_store = cop_store
+    coordinator.atlantic_last_cop_store = last_cop_store
     coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
     coordinator.atlantic_consumptions = dict(client.consumption_summary)
     coordinator.atlantic_monthly_energy = dict(client.monthly_energy_summary)
@@ -118,6 +129,9 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         coordinator = hass.data[DOMAIN][entry.entry_id]
         await coordinator.atlantic_cop_store.async_save(
             coordinator.atlantic_hydraulic_cop.export_accumulated()
+        )
+        await coordinator.atlantic_last_cop_store.async_save(
+            coordinator.atlantic_hydraulic_cop.export_last_cops()
         )
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
