@@ -20,10 +20,13 @@ sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 
 
+MODE_STAMP = int(datetime(2026, 10, 25, 7, tzinfo=timezone.utc).timestamp())
+
+
 def capture(when, *, co=10000, cwu=4000, circuit="CO",
             flow=17.16, supply=25.83, ret=24.89,
             flow_age=25, electric_age=25, supply_age=11037, return_age=11335,
-            separate=True, mode_age=4500, compressor=None, heater=False):
+            separate=True, mode_age=None, compressor=None, heater=False):
     ts = int(when.timestamp())
     interface = {
         "id": "interface-private",
@@ -31,7 +34,8 @@ def capture(when, *, co=10000, cwu=4000, circuit="CO",
         "values": {57: co, 59: cwu, 91: circuit, 112: flow},
         "updated_at": {
             57: ts - electric_age, 59: ts - electric_age,
-            112: ts - flow_age, 91: ts - mode_age,
+            112: ts - flow_age,
+            91: MODE_STAMP if mode_age is None else ts - mode_age,
         },
     }
     generator = {
