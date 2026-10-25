@@ -24,6 +24,9 @@ from .heater_evidence import assess_heaters
 HEAT_FACTOR = 4.186 / 60.0   # water, kW / (L/min * Kelvin)
 WH_PER_RAW = 1.0             # candidate vendor 0.001 kWh per raw increment
 MAX_LIVE_AGE_S = 900
+# A cumulative meter can legitimately keep last-change time through extended
+# inactivity. Only the *new*, positive increment must have a recent stamp.
+MAX_METER_LAST_CHANGE_S = 366 * 86_400
 MAX_TEMP_LAST_CHANGE_S = 43_200  # 12h *only* behind explicit opt-in
 MAX_TEMP_PAIR_SKEW = 600
 MIN_INTERVAL_S = 120
@@ -54,6 +57,15 @@ def _age(device: dict, cap: int, now: datetime) -> int | None:
         return None
     age = round(now.timestamp() - last)
     return age if -60 <= age <= 86_400 else None
+
+
+def _meter_age(device: dict, cap: int, now: datetime) -> int | None:
+    """Age of a counter last *value change* (not last poll); can be months."""
+    last = _stamp(device, cap)
+    if last is None:
+        return None
+    age = round(now.timestamp() - last)
+    return age if -60 <= age <= MAX_METER_LAST_CHANGE_S else None
 
 
 def _has(devices: list[dict], *caps: int) -> list[dict]:
@@ -169,7 +181,7 @@ class HydraulicCopEstimator:
             "przeplyw": _age(interface, 112, now),
             "zasilanie": _age(generator, 109, now),
             "powrot": _age(generator, 116, now),
-            "licznik_pradu": _age(interface, cap, now),
+            "licznik_pradu": _meter_age(interface, cap, now),
         }
         self.metrics["source_ages_seconds"] = ages
         if any(v is None for v in ages.values()):
@@ -180,9 +192,17 @@ class HydraulicCopEstimator:
         if flow_age > MAX_LIVE_AGE_S:
             self._reject("nieaktualny_przeplyw")
             return
-        if electricity_age > MAX_LIVE_AGE_S:
-            self._reject("nieaktualny_licznik_pradu")
-            return
+        # Don't reject the *baseline* because the cumulative meter has not
+        # changed for >15 minutes. When there is no increment there is no COP.
+        # For any later positive increment require a newly advanced, recent
+        # vendor last-change timestamp and unchanged circuit.
+        self.metrics["electric_meter_diagnostics"] = {
+            "capability_id": cap,
+            "last_change_age_seconds": electricity_age,
+            "last_change_is_recent": electricity_age <= MAX_LIVE_AGE_S,
+            "timestamp_semantics": "ostatnia_zmiana_nie_ostatni_odczyt",
+            "counter_increment_seen": False,
+        }
 
         sup_ts, ret_ts = _stamp(generator, 109), _stamp(generator, 116)
         elec_ts, flow_ts = _stamp(interface, cap), _stamp(interface, 112)
@@ -201,9 +221,14 @@ class HydraulicCopEstimator:
         else:
             # With changed temperatures, a large discontinuity in vendor
             # timestamps between flow/thermal/electrical channels is suspicious.
-            skew = max(sup_ts, ret_ts, elec_ts, flow_ts) - min(
-                sup_ts, ret_ts, elec_ts, flow_ts
+            # A counter that has not changed must not force the *fresh*
+            # hydraulic measurements to look time-incompatible. Once the
+            # counter increments its vendor timestamp is included again.
+            check_stamps = (
+                (sup_ts, ret_ts, flow_ts) if electricity_age > MAX_LIVE_AGE_S
+                else (sup_ts, ret_ts, elec_ts, flow_ts)
             )
+            skew = max(check_stamps) - min(check_stamps)
             if skew > (600 if not paired else 180):
                 self._reject("niespojne_czasy_probek")
                 return
@@ -275,7 +300,11 @@ class HydraulicCopEstimator:
         prior = self._baseline
         self._baseline = current
         if prior is None or prior.source_key != current.source_key or prior.circuit != circuit:
-            self.metrics["status"] = "zbieranie_pierwszej_probki"
+            self.metrics["status"] = (
+                "punkt_startowy_starego_licznika_czekamy_na_przyrost"
+                if electricity_age > MAX_LIVE_AGE_S
+                else "zbieranie_pierwszej_probki"
+            )
             return
         if (prior.mode_stamp is not None and mode_stamp is not None
                 and mode_stamp != prior.mode_stamp):
@@ -293,13 +322,26 @@ class HydraulicCopEstimator:
             self.metrics["status"] = "reset_licznika"
             return
         if delta_raw == 0:
-            # Keep the earlier baseline only while the observation gap remains
-            # bounded; a delayed next increment may cover several cloud polls.
+            # Never manufacture electricity from a stationary counter. Keep
+            # the original baseline only within MAX_INTERVAL_S; stale counters
+            # are normal when the pump is idle or history updates rarely.
             self._baseline = prior
-            self.metrics["status"] = "oczekiwanie_na_przyrost_energii"
+            self.metrics["status"] = (
+                "licznik_bez_przyrostu_ponad_15_minut"
+                if electricity_age > MAX_LIVE_AGE_S
+                else "oczekiwanie_na_przyrost_energii"
+            )
             return
-        if elec_ts == prior.electric_stamp:
-            self.metrics["status"] = "zmiana_pradu_bez_znacznika"
+        self.metrics["electric_meter_diagnostics"]["counter_increment_seen"] = True
+        if elec_ts <= prior.electric_stamp:
+            self.metrics["status"] = "zmiana_pradu_bez_nowego_znacznika"
+            return
+        # Even a numeric increase must not be attributed to the sampled
+        # interval when vendor change metadata says it happened long ago
+        # or *before* the baseline observation.
+        if (electricity_age > MAX_LIVE_AGE_S
+                or elec_ts < prior.seen.timestamp() - 60):
+            self.metrics["status"] = "przyrost_pradu_z_nieaktualnym_znacznikiem"
             return
 
         # An old *unchanged* pair of temperatures is a weak reconstruction,

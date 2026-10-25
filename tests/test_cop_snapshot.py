@@ -107,11 +107,69 @@ class SnapshotEstimatorTest(unittest.TestCase):
         self.est.ingest(capture(self.t, supply_age=45000, return_age=45300), self.t)
         self.assertEqual(self.est.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
 
-    def test_stale_electric_meter_or_flow_never_used(self):
+    def test_stale_electric_meter_is_baseline_only_and_old_flow_is_blocked(self):
         self.est.ingest(capture(self.t, electric_age=1170), self.t)
-        self.assertEqual(self.est.metrics["status"], "nieaktualny_licznik_pradu")
+        self.assertEqual(
+            self.est.metrics["status"],
+            "punkt_startowy_starego_licznika_czekamy_na_przyrost",
+        )
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(
+            self.est.metrics["electric_meter_diagnostics"]["last_change_age_seconds"],
+            1170,
+        )
         self.est.ingest(capture(self.t, flow_age=1500), self.t)
         self.assertEqual(self.est.metrics["status"], "nieaktualny_przeplyw")
+
+    def test_old_counter_then_fresh_increment_can_start_new_valid_interval(self):
+        self.est.ingest(capture(self.t, electric_age=3600), self.t)
+        self.assertEqual(
+            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
+        )
+        later = self.t + timedelta(minutes=5)
+        self.est.ingest(capture(later, co=10095, electric_age=20,
+                                supply_age=11337, return_age=11635), later)
+        self.assertEqual(self.est.accumulated_intervals, 1)
+        self.assertIsNotNone(self.est.metrics["cop"])
+        self.assertEqual(
+            self.est.metrics["electric_meter_diagnostics"]["counter_increment_seen"], True
+        )
+
+    def test_stale_meter_without_increment_never_generates_heat_or_cop(self):
+        self.est.ingest(capture(self.t, electric_age=3600), self.t)
+        later = self.t + timedelta(minutes=5)
+        self.est.ingest(capture(later, electric_age=3900,
+                                supply_age=11337, return_age=11635), later)
+        self.assertEqual(self.est.metrics["status"], "licznik_bez_przyrostu_ponad_15_minut")
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.accumulated_intervals, 0)
+
+    def test_old_counter_increase_with_stale_vendor_time_must_not_generate_cop(self):
+        self.est.ingest(capture(self.t, electric_age=3600), self.t)
+        later = self.t + timedelta(minutes=5)
+        # Raw increases, but the vendor only reports a last-change time
+        # that precedes the first observed HA snapshot.
+        self.est.ingest(capture(later, co=10095, electric_age=1800,
+                                supply_age=11337, return_age=11635), later)
+        self.assertEqual(
+            self.est.metrics["status"], "przyrost_pradu_z_nieaktualnym_znacznikiem"
+        )
+        self.assertEqual(self.est.accumulated_intervals, 0)
+
+    def test_old_counter_does_not_spoil_fresh_hydraulic_baseline(self):
+        self.est.ingest(capture(self.t, electric_age=3600,
+                                supply_age=60, return_age=65), self.t)
+        self.assertEqual(
+            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
+        )
+        self.assertIsNone(self.est.metrics["cop"])
+
+    def test_counter_not_changed_for_month_can_still_seed_no_cop(self):
+        self.est.ingest(capture(self.t, electric_age=30*86400), self.t)
+        self.assertEqual(
+            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
+        )
+        self.assertIsNone(self.est.metrics["cop"])
 
     def test_missing_timestamp_does_not_create_output(self):
         devices = capture(self.t)
@@ -214,7 +272,7 @@ class SnapshotEstimatorTest(unittest.TestCase):
         end = self.t + timedelta(minutes=5)
         self.est.ingest(capture(end, co=10095, electric_age=325,
                                 supply_age=11337, return_age=11635), end)
-        self.assertEqual(self.est.metrics["status"], "zmiana_pradu_bez_znacznika")
+        self.assertEqual(self.est.metrics["status"], "zmiana_pradu_bez_nowego_znacznika")
 
     def test_temperature_changes_with_old_stamp_are_not_integrated(self):
         self.est.ingest(capture(self.t), self.t)
