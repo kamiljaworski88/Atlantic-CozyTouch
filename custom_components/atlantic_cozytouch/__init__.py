@@ -64,6 +64,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             raise ConfigEntryAuthFailed("Atlantic rejected credentials") from exc
         except AtlanticError as exc:
             compressor_monitor.invalidate()
+            energy_monitor.invalidate()
+            cop_monitor.invalidate()
             raise UpdateFailed("Atlantic could not be polled") from exc
 
     coordinator = DataUpdateCoordinator(
