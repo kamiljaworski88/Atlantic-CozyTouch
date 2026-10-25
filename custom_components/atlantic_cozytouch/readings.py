@@ -44,6 +44,7 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     91: CapabilitySpec("Aktywny obieg CO/CWU · ID 91", kind="enum", diagnostic=True),
     99: CapabilitySpec("Stan funkcji CWU · ID 99", kind="binary", diagnostic=True),
     112: CapabilitySpec("Odczyt przepływu · ID 112 (surowy)", diagnostic=True, publish_statistics=False),
+    116: CapabilitySpec("Temperatura powrotu obiegu · ID 116", unit="°C", category="temperature", diagnostic=True, publish_statistics=False),
     153: CapabilitySpec("Stan ogrzewania · ID 153", kind="enum", diagnostic=True),
     164: CapabilitySpec("Możliwości pomiaru energii · ID 164", diagnostic=True, publish_statistics=False),
     181: CapabilitySpec("Wykonywany tryb · ID 181", kind="enum", diagnostic=True),
@@ -168,6 +169,7 @@ def extract_devices(payload: object) -> list[dict]:
         values: dict[int, float | str | bool | None] = {}
         reported_ids: set[int] = set()
         energy_status: dict[int, str] = {}
+        updated_at: dict[int, int] = {}
         raw_capabilities = item.get("capabilities", [])
         if isinstance(raw_capabilities, list):
             if len(raw_capabilities) > MAX_CAPABILITIES_PER_DEVICE:
@@ -182,6 +184,10 @@ def extract_devices(payload: object) -> list[dict]:
                 if not 0 <= cap_id <= MAX_CAPABILITY_ID:
                     continue
                 reported_ids.add(cap_id)
+                if cap_id in (57, 59, 91, 109, 112, 116):
+                    timestamp = cap.get("modificationDate")
+                    if type(timestamp) is int and 1577836800 <= timestamp <= 4102444799:
+                        updated_at[cap_id] = timestamp
                 if cap_id in (57, 59, 60):
                     energy_status[cap_id] = energy_value_status(cap.get("value"))
                 if cap_id in CAPABILITIES:
@@ -194,6 +200,7 @@ def extract_devices(payload: object) -> list[dict]:
                     "name": str(item.get("name") or "Atlantic")[:100],
                     "values": values,
                     "energy_status": energy_status,
+                    "updated_at": updated_at,  # bounded capability timestamps, not poll time
                     # IDs only; no unknown measurements are retained/exported.
                     "reported_capability_ids": sorted(reported_ids),
                 }
