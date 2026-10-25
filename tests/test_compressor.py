@@ -22,6 +22,42 @@ class TestCompressor(unittest.TestCase):
         self.m = lib.CompressorMonitor()
         self.t = datetime(2026, 10, 23, tzinfo=timezone.utc)
 
+    def test_direct_compressor_state_off_and_on(self):
+        self.assertEqual(
+            lib.compressor_operating_state({51: True}, {}, self.t),
+            (True, "bezposredni_odczyt_id_51"),
+        )
+        self.assertEqual(
+            lib.compressor_operating_state({51: False}, {}, self.t),
+            (False, "bezposredni_odczyt_id_51"),
+        )
+
+    def test_recent_modulation_can_fallback_when_51_missing(self):
+        ts = int(self.t.timestamp())
+        self.assertEqual(
+            lib.compressor_operating_state({72: 36.5}, {72: ts - 60}, self.t)[0],
+            True,
+        )
+        self.assertEqual(
+            lib.compressor_operating_state({72: 0}, {72: ts - 60}, self.t)[0],
+            False,
+        )
+
+    def test_stale_or_missing_modulation_cannot_fabricate_running(self):
+        ts = int(self.t.timestamp())
+        for values, timestamps in (
+            ({72: 50}, {}),
+            ({72: 50}, {72: ts - 999}),
+            ({72: -1}, {72: ts}),
+            ({72: float("nan")}, {72: ts}),
+            ({72: True}, {72: ts}),
+            ({51: None, 91: "CO", 153: "Ogrzewanie"}, {}),
+            ({24: 50, 27: 90000}, {}),
+        ):
+            self.assertIsNone(
+                lib.compressor_operating_state(values, timestamps, self.t)[0]
+            )
+
     def test_first_snapshot_has_unknown_deltas(self):
         self.m.ingest(device(), self.t)
         m = self.m.metrics["fake"]
