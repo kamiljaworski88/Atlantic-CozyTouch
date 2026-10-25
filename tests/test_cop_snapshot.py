@@ -226,7 +226,7 @@ class SnapshotEstimatorTest(unittest.TestCase):
             supply_age=11217, return_age=11515,
         ), when)
         self.assertEqual(self.est.metrics["status"],
-                         "okno_energii_niespojny_czas_skoku_licznika")
+                         "okno_energii_zmiana_trybu_lub_niespojne_czujniki")
         self.assertIsNone(self.est.metrics["cop"])
 
     def test_opt_in_required_for_distinct_device_modules(self):
