@@ -19,6 +19,7 @@ from datetime import datetime, timezone
 from math import isfinite
 
 from .cop_accumulator import CopEnergyAccumulator
+from .cop_last import LastCopMemory
 from .heater_evidence import assess_heaters
 from .cop_window import ObservedElectricWindow
 
@@ -34,7 +35,8 @@ MIN_INTERVAL_S = 120
 MAX_INTERVAL_S = 1200
 MIN_HEATING_DT_K = 0.75       # low-trust territory below 1.5K
 MAX_HEATING_DT_K = 25
-LAST_GOOD_TTL_S = 12 * 3600
+# Last accepted COP is a *historical* reading; no TTL hides it.
+# Its UTC timestamp and age must always accompany it in HA.
 
 
 def _num(value: object) -> float | None:
@@ -103,6 +105,7 @@ class HydraulicCopEstimator:
             raise ValueError("Experimental cross-device COP requires a boolean")
         self.allow_unique_cross_device = allow_unique_cross_device
         self.accumulator = CopEnergyAccumulator()
+        self.last_cops = LastCopMemory()
         self.window = ObservedElectricWindow()
         self._baseline: _Sample | None = None
         self._last_good: tuple[float, datetime] | None = None
@@ -121,20 +124,54 @@ class HydraulicCopEstimator:
         self.metrics = self._empty()
         return ok
 
+    def export_last_cops(self) -> dict:
+        return self.last_cops.export_state()
+
+    def restore_last_cops(self, raw: object) -> bool:
+        ok = self.last_cops.restore_state(raw)
+        if ok:
+            self.metrics = self._empty()
+            self.metrics["status"] = "ostatni_zachowany_wynik_historyczny"
+        return ok
+
+    def _accepted(self, value: float, at: datetime, circuit: str, quality: str,
+                  source: str) -> None:
+        # Keep last accepted results by circuit independently from any future
+        # failed sample, mode transition or Atlantic API outage.
+        self.last_cops.record(circuit, value, at, quality, source)
+        self._last_good = (value, at)
+        self.metrics["cop"] = value
+        self.metrics["live_cop"] = value
+        self.metrics["last_cop"] = value
+        self.metrics["last_cop_at"] = at.isoformat()
+        self.metrics["last_cop_circuit"] = circuit
+        self.metrics["last_cop_quality"] = quality
+        self.metrics["last_cop_source"] = source
+        self.metrics["last_cop_co"] = (self.last_cops.latest("CO") or {}).get("value")
+        self.metrics["last_cop_cwu"] = (self.last_cops.latest("CWU") or {}).get("value")
+        self.metrics["cop_is_historical"] = False
+
+
     def _empty(self, now: datetime | None = None) -> dict[str, object]:
-        last: float | None = None
-        timestamp: str | None = None
-        if self._last_good and now is not None:
-            value, at = self._last_good
-            age = (now - at).total_seconds()
-            if 0 <= age <= LAST_GOOD_TTL_S:
-                last, timestamp = value, at.isoformat()
+        latest = self.last_cops.latest()
+        co = self.last_cops.latest("CO")
+        cwu = self.last_cops.latest("CWU")
+        value = latest["value"] if latest else None
         return {
             "status": "brak_danych",
-            "thermal_kw": None, "electrical_kw": None, "cop": None,
+            "thermal_kw": None, "electrical_kw": None,
+            "cop": value,
+            "live_cop": None,
             "circuit": None, "topology": "nieustalona",
             "source_ages_seconds": {},
-            "last_cop": last, "last_cop_at": timestamp,
+            "last_cop": value,
+            "last_cop_at": latest["at"] if latest else None,
+            "last_cop_circuit": latest["circuit"] if latest else None,
+            "last_cop_quality": latest["quality"] if latest else None,
+            "last_cop_source": latest["source"] if latest else None,
+            "last_cop_co": co["value"] if co else None,
+            "last_cop_cwu": cwu["value"] if cwu else None,
+            "cop_is_historical": latest is not None,
             "cop_certified": False,
             "temperature_evidence": "nie_sprawdzono",
             "confidence": "brak",
@@ -319,10 +356,7 @@ class HydraulicCopEstimator:
                     long_window.electric_kwh * 3600 / long_window.seconds, 3
                 )
                 estimated = round(long_window.heat_kwh / long_window.electric_kwh, 2)
-                self._last_good = (estimated, now)
-                self.metrics["cop"] = estimated
-                self.metrics["last_cop"] = estimated
-                self.metrics["last_cop_at"] = now.isoformat()
+                self._accepted(estimated, now, circuit, "niska", "pelne_okno_energii")
                 self.metrics["confidence"] = "niska"
                 self.metrics["status"] = "szacunek_niska_pewnosc_pelne_okno_licznika"
             else:
@@ -407,10 +441,7 @@ class HydraulicCopEstimator:
             return
         self.metrics["accumulated"] = self.accumulator.snapshot()
         result = round(estimated, 2)
-        self._last_good = (result, now)
-        self.metrics["cop"] = result
-        self.metrics["last_cop"] = result
-        self.metrics["last_cop_at"] = now.isoformat()
+        self._accepted(result, now, circuit, self.metrics["confidence"], "krotki_przedzial")
         self.metrics["status"] = (
             "szacunek_niska_pewnosc_stale_temperatury"
             if old_temp else
