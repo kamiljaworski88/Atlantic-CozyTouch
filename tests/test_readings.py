@@ -67,15 +67,19 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(devices[0]["reported_capability_ids"], [100506])
         self.assertNotIn("must not be exported", str(devices))
 
-    def test_energy_in_watt_hours_converted_to_kwh(self):
-        self.assertEqual(module.normalize_value(44, 12345), 12.345)
-        self.assertEqual(module.normalize_value(45, "500"), 0.5)
+    def test_gas_counters_44_45_46_are_never_electric_or_scaled(self):
+        # Official Atlantic capability catalogue: these IDs are gas kWh.
+        self.assertEqual(module.normalize_value(44, 12345), 12345)
+        self.assertEqual(module.normalize_value(45, "500"), 500)
         self.assertEqual(module.normalize_value(46, 0), 0.0)
         for capability in (44, 45, 46):
             spec = module.CAPABILITIES[capability]
+            self.assertIn("gazu", spec.title)
             self.assertEqual(spec.unit, "kWh")
             self.assertEqual(spec.category, "energy")
             self.assertTrue(spec.cumulative)
+            self.assertTrue(spec.diagnostic)
+            self.assertFalse(spec.publish_statistics)
 
     def test_compressor_modulation_timestamp_is_parsed_safely(self):
         payload = [{"devices": [{
