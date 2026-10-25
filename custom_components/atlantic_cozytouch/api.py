@@ -68,6 +68,8 @@ class AtlanticReadOnlyClient:
         self._compressor_device_ids: set[str] = set()
         self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
         self._compressor_probe_disabled = False
+        self._compressor_setup_missing: set[str] = set()
+        self._compressor_cache: dict[str, tuple[datetime, dict]] = {}
         self.compressor_probe_summary: dict[str, object] = {"state": "nie_sprawdzono"}
 
     def _request(self, method: str, url: str, **kwargs):
@@ -245,12 +247,47 @@ class AtlanticReadOnlyClient:
             self.energy_daily = {}  # Never mix accounts/setup IDs.
             self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
             self._compressor_probe_disabled = False
+            self._compressor_cache = {}
             self.compressor_probe_summary = {"state": "nie_sprawdzono"}
         # IDs come only from the authenticated account's setup snapshot.
         hosts = compressor_host_devices(devices)
         self._compressor_device_ids = {
             d["id"] for d in hosts[:2] if self._valid_device_id(d["id"])
         }
+        self._compressor_setup_missing = {
+            d["id"] for d in hosts[:2]
+            if d["id"] in self._compressor_device_ids
+            and not {24, 27, 51, 72}.issubset(set(d["reported_capability_ids"]))
+        }
+        # Cache only the most recent authenticated direct-read measurements.
+        # Counters tolerate 16 minutes; instantaneous compressor state has a
+        # much tighter 4-minute TTL and its vendor modificationDate is kept.
+        now = datetime.now(timezone.utc)
+        for device in hosts[:2]:
+            cached = self._compressor_cache.get(device["id"])
+            if cached is None:
+                continue
+            sampled_at, source = cached
+            age = (now - sampled_at).total_seconds()
+            if age < 0 or age > 960:
+                continue
+            for cap_id in (24, 27, 51, 72):
+                if cap_id not in source.get("reported_capability_ids", []):
+                    continue
+                if cap_id in (51, 72) and age > 240:
+                    continue
+                if cap_id in device["reported_capability_ids"]:
+                    continue
+                value = source.get("values", {}).get(cap_id)
+                if value is None:
+                    continue
+                device["values"][cap_id] = value
+                stamp = source.get("updated_at", {}).get(cap_id)
+                if type(stamp) is int:
+                    device.setdefault("updated_at", {})[cap_id] = stamp
+                device["reported_capability_ids"] = sorted(
+                    set(device["reported_capability_ids"]) | {cap_id}
+                )
         return devices
 
     async def async_probe_compressor_capabilities(self, devices: list[dict]) -> None:
@@ -275,8 +312,7 @@ class AtlanticReadOnlyClient:
             self.compressor_probe_summary = {"state": "brak_numerycznego_id_pompy"}
             return
         need_probe = [
-            d for d in hosts
-            if not {24, 27, 51, 72}.issubset(set(d["reported_capability_ids"]))
+            d for d in hosts if d["id"] in self._compressor_setup_missing
         ]
         if not need_probe:
             self.compressor_probe_summary = {"state": "parametry_juz_w_odczycie_glownym"}
@@ -321,6 +357,7 @@ class AtlanticReadOnlyClient:
                     self.compressor_probe_summary = {"state": "niepoprawna_odpowiedz"}
                     return
                 source = sanitized[0]
+                self._compressor_cache[device["id"]] = (now, source)
                 for cap_id in (24, 27, 51, 72):
                     if cap_id not in source["reported_capability_ids"]:
                         continue
