@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.3 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.4 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,25 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.4 — dodatkowy odczyt diagnostyczny sprężarki
+
+- Jeżeli w zbiorczym odczycie `setupviewv2` brakuje ID 24/27/51/72,
+  integracja może wykonać **GET** `/magellan/capabilities/?deviceId=…`
+  wyłącznie do maksymalnie dwóch urządzeń pompy zgłoszonych przez
+  zalogowane konto Atlantic.
+- Jeden odczyt na urządzenie **nie częściej niż co 15 minut**.
+  Tylko cztery znane parametry sprężarki trafiają do sensorów.
+  Liczniki mogą pozostać w pamięci maks. 16 minut, stan chwilowy
+  jedynie 4 minuty; poza tym odczyty pozostają `unknown`.
+- Nowy diagnostyczny sensor `Diagnostyka odczytu sprężarki z API`
+  informuje, czy dodatkowe zapytanie uzupełniło pomiary, czy API
+  nie zwróciło nowych parametrów. Nie eksponuje numeru urządzenia,
+  tokenów ani surowego payloadu.
+- Zachowujemy dotychczasowe nazwy i `unique_id` encji. Bez zmian
+  sterowania urządzeniem, bez nowych serwerów i metod POST/PATCH/PUT.
+- **Nie ma gwarancji**, że osobny endpoint ujawni te liczniki:
+  producent może nie udostępniać ich w chmurze dla danego modelu.
 
 ## v0.5.3 — brakujące sensory sprężarki w Home Assistant
 
