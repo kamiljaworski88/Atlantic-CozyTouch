@@ -251,7 +251,7 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         await client.async_probe_consumptions()  # 15-minute minimum interval.
         self.assertEqual(len(session.calls), 3)
         for bad in (target + "&admin=true", target.replace("123", "124"),
-                    target.replace("daily", "monthly"),
+                    target.replace("daily", "yearly"),
                     API_ORIGIN + "/magellan/executions/writecapability"):
             with self.assertRaises(AtlanticError):
                 client._request("GET", bad)
