@@ -142,6 +142,41 @@ class SnapshotEstimatorTest(unittest.TestCase):
         )
         self.assertEqual(self.est.accumulated_intervals, 0)
 
+    def test_user_actual_id8_3000_does_not_falsely_assert_heater_on(self):
+        baseline = capture(self.t)
+        baseline[1]["reported_capability_ids"].append(8)
+        baseline[1]["values"][8] = 3000.0
+        self.est.ingest(baseline, self.t)
+        self.assertEqual(self.est.metrics["status"], "zbieranie_pierwszej_probki")
+        audit = self.est.metrics["heater_evidence"]
+        self.assertEqual(
+            audit["power_id_states"]["8"],
+            "poza_zakresem_katalogu_skala_nieznana",
+        )
+        self.assertFalse(audit["heater_off_confirmed"])
+        self.assertTrue(audit["uncertain"])
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        later = self.t + timedelta(minutes=5)
+        second = capture(later, co=10095, supply_age=11337, return_age=11635)
+        second[1]["reported_capability_ids"].append(8)
+        second[1]["values"][8] = 3000.0
+        self.est.ingest(second, later)
+        self.assertEqual(self.est.accumulated_intervals, 1)
+        self.assertIsNotNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        self.assertFalse(self.est.metrics["cop_certified"])
+
+    def test_confirmed_dhw_heater_still_blocks_even_if_id8_unscaled(self):
+        devices = capture(self.t, heater=True)
+        devices[1]["reported_capability_ids"].append(8)
+        devices[1]["values"][8] = 3000.0
+        self.est.ingest(devices, self.t)
+        self.assertEqual(
+            self.est.metrics["status"], "grzalka_cwu_aktywna_niepelny_bilans_pradu"
+        )
+        self.assertIsNotNone(self.est.metrics["delta_t_k"])
+        self.assertEqual(self.est.accumulated_intervals, 0)
+
     def test_no_delta_does_not_invent_consumption_and_can_bridge_short_stall(self):
         self.est.ingest(capture(self.t), self.t)
         middle = self.t + timedelta(minutes=3)
