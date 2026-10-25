@@ -17,7 +17,7 @@ from math import isfinite
 MAX_STEP_SECONDS = 480    # 3-min regular polling, allow modest scheduling jitter
 MIN_STEP_SECONDS = 120
 MAX_WINDOW_SECONDS = 3600
-MIN_WINDOW_SECONDS = 1200  # shorter event windows use pre-existing estimator
+MIN_WINDOW_SECONDS = 720  # >=12m of continuous snapshots for trustworthy thermal coverage
 MIN_COVERAGE = 0.95
 MAX_METER_CHANGE_AGE = 900
 
@@ -45,6 +45,7 @@ class ObservedElectricWindow:
         self.last_coverage_percent = None
         self.last_window_seconds = None
         self.last_segment_count = 0
+        self.last_counter_increment_seen = False
 
     def _clear_anchor(self, reason: str) -> None:
         self._anchor = None
@@ -63,6 +64,7 @@ class ObservedElectricWindow:
             "maks_przerwa_miedzy_probkami_s": MAX_STEP_SECONDS,
             "maks_czas_okna_s": MAX_WINDOW_SECONDS,
             "liczymy_od_dwoch_widzianych_skokow_licznika": True,
+            "przyrost_licznika_w_biezacym_odczycie": self.last_counter_increment_seen,
         }
 
     @staticmethod
@@ -99,9 +101,11 @@ class ObservedElectricWindow:
         """Call only after whole hydraulic snapshot passed all upstream gates.
 
         The current sample is a dataclass with seen/source_key/circuit/stamps,
-        hydraulic thermal_kw and raw counter. Returns a validated *candidate*
-        only for a fully observed long window >20m, never for short windows.
+        hydraulic thermal_kw and raw counter. Returns a validated candidate
+        only for a fully observed 12-60 minute interval anchored by TWO
+        witnessed counter changes. No unanchored short COP is trustworthy.
         """
+        self.last_counter_increment_seen = False
         previous = self._last
         self._last = current
         if previous is None:
@@ -122,6 +126,8 @@ class ObservedElectricWindow:
         if delta > 0 and not self._new_meter_event(previous, current):
             self._clear_anchor("niespojny_czas_skoku_licznika")
             return None
+        if delta > 0:
+            self.last_counter_increment_seen = True
         if delta == 0 and current.electric_stamp != previous.electric_stamp:
             self._clear_anchor("zmiana_stempla_bez_przyrostu")
             return None
@@ -157,8 +163,8 @@ class ObservedElectricWindow:
                 if duration > 0 else 0.0
             )
             energy_kwh = (current.electric_raw - self._anchor.electric_raw) / 1000
-            if duration <= MIN_WINDOW_SECONDS:
-                self.last_reason = "krotkie_okno_obslugiwane_przez_stary_algorytm"
+            if duration < MIN_WINDOW_SECONDS:
+                self.last_reason = "za_krotkie_okno_licznika_mniej_niz_12_minut"
             elif self._covered_seconds / duration < MIN_COVERAGE or self._segments < 4:
                 self.last_reason = "niepelne_pokrycie_pomiarami"
             elif not 0 < energy_kwh < 10:
