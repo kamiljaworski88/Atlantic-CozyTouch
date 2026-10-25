@@ -760,6 +760,7 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
             "diagnostyka_grzalek": metrics.get("heater_evidence"),
             "metoda_probkowania": metrics.get("observation_method"),
             "skala_pradu_nadal_do_weryfikacji": metrics.get("counter_scale"),
+            "diagnostyka_licznika_pradu": metrics.get("electric_meter_diagnostics"),
             "ostatni_poprawny_szacunek_utc": metrics.get("last_cop_at"),
             "algorytm_eksperymentalny": True,
             "status_walidacji": metrics.get("status"),
