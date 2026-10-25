@@ -386,6 +386,62 @@ class SnapshotEstimatorTest(unittest.TestCase):
         self.assertEqual(self.est.metrics["last_cop_quality"], "niska")
         self.assertFalse(self.est.metrics["cop_certified"])
 
+    def test_old_stored_single_co_interval_is_visible_after_0_5_20_update(self):
+        self.assertTrue(self.est.accumulator.add("CO", 0.944, 0.1, 600))
+        self.est.invalidate()
+        info = self.est.metrics
+        self.assertEqual(info["cop"], 9.44)
+        self.assertIsNone(info["last_cop"])
+        self.assertIsNone(info["last_cop_at"])
+        self.assertIsNone(info["live_cop"])
+        self.assertTrue(info["cop_uses_cumulative_fallback"])
+        self.assertEqual(info["cop_display_source"],
+                         "zastepczy_cop_skumulowany_bez_daty")
+        self.assertEqual(info["cop_display_circuit"], "CO")
+        self.assertFalse(info["cop_certified"])
+
+        recovered = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        self.assertTrue(recovered.restore_accumulated(self.est.export_accumulated()))
+        self.assertEqual(recovered.metrics["cop"], 9.44)
+        self.assertTrue(recovered.metrics["cop_uses_cumulative_fallback"])
+        self.assertIsNone(recovered.metrics["last_cop_at"])
+
+    def test_cumulative_fallback_does_not_claim_most_recent_interval(self):
+        self.assertTrue(self.est.accumulator.add("CO", 0.4, 0.1, 600))
+        self.assertTrue(self.est.accumulator.add("CO", 0.4, 0.2, 600))
+        self.est.invalidate()
+        # Weighted ratio 2.67 does not match the last accepted interval COP=2.
+        # A visible surrogate is fine only if it says it is an aggregate.
+        self.assertAlmostEqual(self.est.metrics["cop"], 2.67)
+        self.assertTrue(self.est.metrics["cop_uses_cumulative_fallback"])
+        self.assertIsNone(self.est.metrics["last_cop"])
+        self.assertIsNone(self.est.metrics["last_cop_at"])
+        self.assertEqual(self.est.metrics["cop_display_source"],
+                         "zastepczy_cop_skumulowany_bez_daty")
+
+    def test_one_real_new_interval_replaces_legacy_fallback_with_dated_cop(self):
+        self.assertTrue(self.est.accumulator.add("CO", 0.944, 0.1, 600))
+        self.est.invalidate()
+        self.assertEqual(self.est.metrics["cop"], 9.44)
+        self.est.ingest(capture(self.t), self.t)
+        when = self.t + timedelta(minutes=5)
+        self.est.ingest(
+            capture(when, co=10095, supply_age=11337, return_age=11635),
+            when,
+        )
+        info = self.est.metrics
+        self.assertIsNotNone(info["live_cop"])
+        self.assertFalse(info["cop_uses_cumulative_fallback"])
+        self.assertEqual(info["cop_display_source"], "ostatni_zaakceptowany_przedzial")
+        self.assertEqual(info["last_cop_at"], when.isoformat())
+        self.assertEqual(info["last_cop_circuit"], "CO")
+
+    def test_empty_legacy_storage_never_fabricates_cop(self):
+        self.est.invalidate()
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertFalse(self.est.metrics["cop_uses_cumulative_fallback"])
+        self.assertEqual(self.est.metrics["cop_display_source"], "brak")
+
     def test_latest_cop_survives_invalidate_reboot_and_rejected_samples(self):
         self.est.ingest(capture(self.t), self.t)
         when = self.t + timedelta(minutes=5)

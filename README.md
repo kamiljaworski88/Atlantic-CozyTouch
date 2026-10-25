@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.19 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.20 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.20 — COP nie znika po aktualizacji z 0.5.18
+
+- Naprawa migracji: w 0.5.19 główny `COP Atlantic · szacunkowy` pokazywał `unknown`, nawet jeśli w magazynie istnieją poprawnie zapisane **zaakceptowane energie skumulowane** z wcześniejszej wersji (np. 1 przedział CO, COP=9,44). Wcześniejsze wersje nie zapisywały oddzielnie daty ostatniego pojedynczego przedziału, dlatego nie dało się wyświetlić `ostatni COP`.
+- Teraz główna encja wyświetla **COP skumulowany jako wartość zastępczą** *tylko* gdy brak zarejestrowanego ostatniego indywidualnego wyniku, ale istnieją zapisane zaakceptowane przedziały CO/CWU. Nie zakładamy, że suma wielu przedziałów to ostatnia próbka i **nigdy nie wymyślamy daty pomiaru**.
+- Atrybuty `zrodlo_wyswietlanego_cop=zastepczy_cop_skumulowany_bez_daty`, `zastepczy_cop_skumulowany=true`, `obieg_wyswietlanego_cop` i `uwaga_daty` otwarcie wyjaśniają pochodzenie wartości. `ostatni_zaakceptowany_cop_utc` i `wiek_ostatniego_wyniku_h` pozostają puste, gdy data rzeczywiście nie jest znana.
+- Po otrzymaniu i zaakceptowaniu nowego COP nastąpi **automatyczna zamiana** na ostatni indywidualny wynik z rzeczywistą datą i obiegiem. Oddzielna encja chwilowa nadal pokazuje `unknown` między próbkami.
+- Dotychczasowy magazyn sum pozostaje **bez zmian** (brak destrukcyjnych migracji i nowych statystyk HA Energy). Jeżeli nigdy nie było żadnego zaakceptowanego przedziału, pozostaje `unknown`; nie publikujemy fikcyjnego COP.
+- Szacunek 9,44 jest podejrzanie wysoki w porównaniu z panelem Atlantic (ok. 2,92 dla CO). Wartość zastępcza służy wygodzie wyświetlania i nie potwierdza faktycznej sprawności.
 
 ## v0.5.19 — stała widoczność ostatniego zaakceptowanego COP
 
