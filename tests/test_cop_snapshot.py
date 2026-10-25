@@ -309,6 +309,59 @@ class SnapshotEstimatorTest(unittest.TestCase):
         self.est.ingest(capture(self.t, flow=True), self.t)
         self.assertEqual(self.est.metrics["status"], "brak_liczbowych_pomiarow")
 
+    def test_long_observed_window_accepts_only_second_meter_jump(self):
+        # 3m HA polling, real counter changes separated by 33 minutes.
+        # First observed change at minute 3 opens a NEW window; no history
+        # before that event is included in its thermal balance.
+        self.est.ingest(capture(self.t), self.t)
+        t1 = self.t + timedelta(minutes=3)
+        self.est.ingest(capture(
+            t1, co=10095, electric_age=15,
+            supply_age=11037+180, return_age=11335+180,
+        ), t1)
+        early = self.est.accumulated_intervals
+        for m in range(6, 36, 3):
+            moment = self.t + timedelta(minutes=m)
+            self.est.ingest(capture(
+                moment, co=10095, electric_age=(m-3)*60+15,
+                supply_age=11037+m*60, return_age=11335+m*60,
+            ), moment)
+        self.assertEqual(self.est.accumulated_intervals, early)
+        end = self.t + timedelta(minutes=36)
+        self.est.ingest(capture(
+            end, co=10395, electric_age=15,
+            supply_age=11037+36*60, return_age=11335+36*60,
+        ), end)
+        self.assertEqual(self.est.accumulated_intervals, early + 1)
+        self.assertEqual(
+            self.est.metrics["status"], "szacunek_niska_pewnosc_pelne_okno_licznika"
+        )
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        self.assertAlmostEqual(
+            self.est.metrics["electric_window_diagnostics"]["pokrycie_procent"],
+            100.0,
+        )
+        self.assertFalse(self.est.metrics["cop_certified"])
+
+    def test_long_observed_window_rejects_unphysical_51_unit_increment(self):
+        self.est.ingest(capture(self.t), self.t)
+        for m in range(3, 39, 3):
+            moment = self.t + timedelta(minutes=m)
+            raw = 10100 if m < 36 else 10151
+            last_change = 3 if m < 36 else 36
+            self.est.ingest(capture(
+                moment, co=raw,
+                electric_age=(m-last_change)*60+15,
+                supply_age=11037+m*60, return_age=11335+m*60,
+            ), moment)
+        self.assertEqual(
+            self.est.metrics["electric_window_diagnostics"]["status"],
+            "energia_cieplna_i_prad_fizycznie_niespojne",
+        )
+        self.assertNotEqual(
+            self.est.metrics["status"], "szacunek_niska_pewnosc_pelne_okno_licznika"
+        )
+
     def test_no_private_identifiers_in_public_metrics_or_store(self):
         self.est.ingest(capture(self.t), self.t)
         self.assertNotIn("interface-private", str(self.est.metrics))
