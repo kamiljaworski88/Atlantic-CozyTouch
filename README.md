@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.8 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.9 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,16 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.9 — zbiorczy audyt źródeł produkcji energii dla COP
+
+- Nowy sensor diagnostyczny `COP Atlantic · audyt źródeł ciepła`, automatycznie analizujący cztery już odczytywane ścieżki `setup/day`, `setup/month`, `device/day`, `device/month`.
+- Stan rozróżnia: brak danych, niedostępne API, niekompletne metadane, brak potwierdzonego ciepła oraz **niezweryfikowanego kandydata**, gdy dostępna seria zawiera dodatnie `producedQuantity`.
+- Zanonimizowane, ograniczone liczby rekordów na źródło, hipoteza flag 256/1024 (nie są kWh), kod kolejnego kroku. Brak tokenów, identyfikatorów urządzeń, surowych wartości energii oraz informacji o użytkowniku.
+- `energia_cieplna_potwierdzona: false` i `cop_okresowy_gotowy: false` do czasu potwierdzenia rodzaju energii, okresu i skali na prawdziwej pompie. **Nie tworzymy niezweryfikowanego COP miesięcznego.**
+- Bez nowych endpointów, usług zapisu ani serwerów pośredniczących. Zachowane stare encje i `unique_id`.
+- W instrukcji uwzględniono uwagę Atlantic, że na części Alféa A.I. wyświetlane zużycie może być **oszacowaniem**, a nie bezpośrednim pomiarem.
+- [Odbiór testowy 0.5.9](docs/COP_SOURCE_AUDIT_0_5_9.md). Prace oparto na 0.5.8, które nadal wymaga przeglądu i testu na urządzeniu.
 
 ## v0.5.8 — bezpieczny COP i zgodność czasowa pomiarów
 
