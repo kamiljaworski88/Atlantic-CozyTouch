@@ -43,6 +43,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
             # Optional endpoint; errors are isolated from standard telemetry.
             await client.async_probe_consumptions()
+            await client.async_probe_monthly_energy()
+            coordinator.atlantic_monthly_energy = dict(client.monthly_energy_summary)
             coordinator.atlantic_consumptions = dict(client.consumption_summary)
             coordinator.atlantic_daily_energy = {
                 category: dict(days) for category, days in client.energy_daily.items()
@@ -75,6 +77,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.atlantic_hydraulic_cop = cop_monitor
     coordinator.atlantic_compressor_probe = dict(client.compressor_probe_summary)
     coordinator.atlantic_consumptions = dict(client.consumption_summary)
+    coordinator.atlantic_monthly_energy = dict(client.monthly_energy_summary)
     coordinator.atlantic_daily_energy = {}
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
