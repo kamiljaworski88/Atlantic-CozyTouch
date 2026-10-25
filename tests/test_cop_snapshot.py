@@ -362,6 +362,55 @@ class SnapshotEstimatorTest(unittest.TestCase):
             self.est.metrics["status"], "szacunek_niska_pewnosc_pelne_okno_licznika"
         )
 
+    def test_latest_cop_remains_visible_when_next_poll_counter_is_zero(self):
+        self.est.ingest(capture(self.t), self.t)
+        first = self.t + timedelta(minutes=5)
+        self.est.ingest(capture(
+            first, co=10095, supply_age=11337, return_age=11635,
+        ), first)
+        result = self.est.metrics["cop"]
+        self.assertIsNotNone(result)
+        self.assertEqual(self.est.metrics["live_cop"], result)
+        self.assertFalse(self.est.metrics["cop_is_historical"])
+        assert result is not None
+        later = first + timedelta(minutes=3)
+        self.est.ingest(capture(
+            later, co=10095, electric_age=205,
+            supply_age=11517, return_age=11815,
+        ), later)
+        self.assertEqual(self.est.metrics["cop"], result)
+        self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertTrue(self.est.metrics["cop_is_historical"])
+        self.assertEqual(self.est.metrics["last_cop_co"], result)
+        self.assertEqual(self.est.metrics["last_cop_circuit"], "CO")
+        self.assertEqual(self.est.metrics["last_cop_quality"], "niska")
+        self.assertFalse(self.est.metrics["cop_certified"])
+
+    def test_latest_cop_survives_invalidate_reboot_and_rejected_samples(self):
+        self.est.ingest(capture(self.t), self.t)
+        when = self.t + timedelta(minutes=5)
+        self.est.ingest(capture(
+            when, co=10095, supply_age=11337, return_age=11635,
+        ), when)
+        record = self.est.export_last_cops()
+        accepted = self.est.metrics["cop"]
+        self.est.invalidate()
+        self.assertEqual(self.est.metrics["cop"], accepted)
+        self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertEqual(self.est.metrics["status"], "brak_ciaglosci_odczytow")
+        self.est.ingest(capture(
+            when + timedelta(minutes=5), flow=0,
+        ), when + timedelta(minutes=5))
+        self.assertEqual(self.est.metrics["cop"], accepted)
+        self.assertIsNone(self.est.metrics["live_cop"])
+        restored = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        self.assertTrue(restored.restore_last_cops(record))
+        self.assertEqual(restored.metrics["cop"], accepted)
+        self.assertEqual(restored.metrics["last_cop_co"], accepted)
+        self.assertIsNone(restored.metrics["live_cop"])
+        self.assertEqual(restored.metrics["last_cop_at"], when.isoformat())
+        self.assertNotIn("private", str(record))
+
     def test_no_private_identifiers_in_public_metrics_or_store(self):
         self.est.ingest(capture(self.t), self.t)
         self.assertNotIn("interface-private", str(self.est.metrics))
