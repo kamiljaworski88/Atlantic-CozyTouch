@@ -169,7 +169,7 @@ class TestConsumptionProbe(unittest.TestCase):
             "2026-10-23",
         )
 
-    def test_energy_support_mask_distinguishes_electricity_and_heat(self):
+    def test_energy_support_mask_does_not_invent_thermal_production(self):
         devices = [{
             "reported_capability_ids": [164],
             "values": {164: 2 + 16 + 256 + 1024},
@@ -178,7 +178,9 @@ class TestConsumptionProbe(unittest.TestCase):
         self.assertEqual(result, {
             "status": "odczytany",
             "prad_co": True, "prad_cwu": True,
-            "produkcja_ciepla_co": True, "produkcja_ciepla_cwu": True,
+            "produkcja_ciepla_co": None, "produkcja_ciepla_cwu": None,
+            "niezdefiniowane_bity_id164": 256 + 1024,
+            "maska_nie_potwierdza_produkcji_ciepla": True,
         })
         self.assertEqual(module.energy_capabilities_summary([])["status"], "niezgloszony")
         self.assertEqual(module.energy_capabilities_summary([{

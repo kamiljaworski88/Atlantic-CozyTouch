@@ -32,9 +32,13 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     27: CapabilitySpec("Czas pracy sprężarki", unit="s", category="duration", cumulative=True, diagnostic=True),
     28: CapabilitySpec("Czas pracy pompy CO", unit="h", category="duration", cumulative=True, diagnostic=True),
     29: CapabilitySpec("Czas pracy pompy CWU", unit="h", category="duration", cumulative=True, diagnostic=True),
-    44: CapabilitySpec("Zużycie energii elektrycznej CO", unit="kWh", category="energy", cumulative=True),
-    45: CapabilitySpec("Zużycie energii elektrycznej CWU", unit="kWh", category="energy", cumulative=True),
-    46: CapabilitySpec("Łączne zużycie energii elektrycznej", unit="kWh", category="energy", cumulative=True),
+    # Official Magellan capability catalogue: 44/45/46 are GAS consumption,
+    # NOT electrical usage. All three are specified in kWh by the vendor.
+    # Disable long-term energy statistics to avoid mixing them with old
+    # releases where these IDs were incorrectly scaled and named electricity.
+    44: CapabilitySpec("Zużycie gazu · ogrzewanie (ID 44)", unit="kWh", category="energy", cumulative=True, diagnostic=True, publish_statistics=False),
+    45: CapabilitySpec("Zużycie gazu · CWU (ID 45)", unit="kWh", category="energy", cumulative=True, diagnostic=True, publish_statistics=False),
+    46: CapabilitySpec("Łączne zużycie gazu (ID 46)", unit="kWh", category="energy", cumulative=True, diagnostic=True, publish_statistics=False),
     # 57/59/60 appear in the Atlantic vendor mapping as ENERGY, but their
     # scaling, reset semantics and meaning on this model are not field-verified.
     # Expose raw numeric diagnostics WITHOUT kWh, energy device_class or statistics.
@@ -136,10 +140,8 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
         return None
     if capability_id in (57, 59, 60, 112) and number < 0:
         return None
-    # Atlantic publishes these electrical energy counters in Wh, not kWh.
-    # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".
-    if capability_id in (44, 45, 46):
-        return number / 1000.0
+    # IDs 44/45/46 are GAS kWh in the Atlantic catalogue; never scale /1000.
+    # IDs 57/59 remain unscaled raw counters, validated separately.
     return number
 
 

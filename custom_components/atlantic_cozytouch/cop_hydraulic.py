@@ -74,6 +74,14 @@ class HydraulicCopEstimator:
             self.metrics["status"] = "brak_jednoznacznych_zrodel"
             return
         interface, generator = interfaces[0], generators[0]
+        # The Magellan setup splits logical devices. A unique device with
+        # IDs 109/116 is NOT automatically the hydraulic return circuit of
+        # the other device with flow ID 112. Never compute a plausible but
+        # physically unrelated COP without explicit topology verification.
+        if interface["id"] != generator["id"]:
+            self._baseline = None
+            self.metrics["status"] = "niepotwierdzone_powiazanie_obiegu"
+            return
         circuit = interface.get("values", {}).get(91)
         self.metrics["circuit"] = circuit if circuit in ("CO", "CWU") else None
         if circuit not in ("CO", "CWU"):

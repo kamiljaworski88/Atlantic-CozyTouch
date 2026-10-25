@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.5 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.6 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,31 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.6 — audyt katalogu Atlantic i korekta odczytów
+
+Weryfikacja 405 wpisów katalogu capability Magellan ujawniła błędy
+naszych wcześniejszych mapowań. Skorygowano je bez dodatkowego ruchu HTTP.
+
+- **ID44, ID45 i ID46 to energia gazu [kWh]**, a nie prądu [Wh].
+  Odczytów nie dzielimy już przez 1000. Dla tych historycznie
+  źle opisanych encji zablokowano statystyki Home Assistant, żeby
+  stare wartości nie były traktowane jako wiarygodne rozliczenia.
+- ID164 `HomeNRJConsCapabilities` deklaruje bity 1–64, w tym
+  elektryczność CO=2 i CWU=16. **Nie potwierdza produkcji ciepła**:
+  znaczenie dodatkowych bitów 256 i 1024 nie jest określone
+  w opublikowanym katalogu. Atrybuty produkcji pozostają `null`.
+- Szacunek COP nie miesza już przepływu z jednego urządzenia
+  logicznego z zasilaniem/powrotem innego bez wiarygodnego
+  potwierdzenia ich powiązania hydraulicznego. Brak dowodów
+  powoduje `unknown`, a nie pozornie prawidłowy COP.
+- Diagnostyka dodatkowego odczytu sprężarki jest przypisana do
+  urządzenia pompy, gdy można je jednoznacznie rozpoznać.
+
+Zobacz [raport katalogu i dalsze możliwości API](docs/ATLANTIC_API_AUDIT_0_5_6.md).
+**Nie uzyskano jeszcze automatycznie zmierzonej produkcji ciepła
+ze sterownika**. Obliczenia COP z ekranów pozostają odrębnym
+punktem odniesienia.
 
 ## v0.5.5 — weryfikacja miesięcznej produkcji ciepła w API
 
@@ -202,7 +227,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 27 | czas pracy sprężarki (wg API: sekundy) |
 | 51 | stan sprężarki |
 | 72 | modulacja sprężarki (%) |
-| 44, 45, 46 | liczniki elektrycznego zużycia CO, CWU i łącznego, automatycznie przeliczone z Wh na kWh |
+| 44, 45, 46 | **liczniki zużycia gazu** CO, CWU i łącznie, jednostka kWh w katalogu; diagnostyczne, bez statystyk |
 | 100 | ciśnienie wody |
 | 109 | temperatura wody obiegu |
 | 111 | temperatura CWU |
@@ -210,7 +235,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 119 | temperatura zewnętrzna |
 | 6, 150, 180 | diagnostyczne kody błędów |
 
-Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są obliczane bez wiarygodnych pomiarów. Wartości zużycia elektrycznego 44–46 mają w API jednostkę Wh i są prezentowane w kWh.**
+Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są publikowane jako zweryfikowany pomiar bez zgodnych danych. ID 44–46 oznaczają zużycie gazu w kWh, nie prąd.**
 
 ## Instalacja (dopiero po przeglądzie PR)
 

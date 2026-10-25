@@ -362,6 +362,15 @@ class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
     def __init__(self, coordinator, entry_id: str) -> None:
         super().__init__(coordinator)
         self._attr_unique_id = f"{DOMAIN}_{entry_id}_compressor_direct_probe"
+        # Show this diagnostic under the actual pump, not only as an
+        # account-level orphan, when discovery identifies exactly one host.
+        hosts = compressor_host_devices(coordinator.data or [])
+        if len(hosts) == 1:
+            self._attr_device_info = DeviceInfo(
+                identifiers={(DOMAIN, hosts[0]["id"])},
+                name=hosts[0]["name"],
+                manufacturer="Atlantic",
+            )
 
     @property
     def native_value(self):
