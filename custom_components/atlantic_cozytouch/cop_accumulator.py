@@ -110,7 +110,7 @@ class CopEnergyAccumulator:
 
     def restore_state(self, raw: object) -> bool:
         """Atomic fail-closed recovery of local .storage data."""
-        if not isinstance(raw, dict) or raw.get("schema") != SCHEMA:
+        if not isinstance(raw, dict) or type(raw.get("schema")) is not int or raw.get("schema") != SCHEMA:
             return False
         entries = raw.get("buckets")
         if not isinstance(entries, dict) or set(entries) != set(CIRCUITS):
