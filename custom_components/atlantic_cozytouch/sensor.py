@@ -146,6 +146,15 @@ class AtlanticReadOnlySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
+        if self._capability_id in (8, 9, 11):
+            return {
+                "surowy_odczyt_bez_jednostki": True,
+                "katalog_atlantic_jednostka": "kW",
+                "katalog_atlantic_maksimum_kw": 20,
+                "skala_surowej_wartosci_zweryfikowana": False,
+                "czy_grzalka_pracuje_potwierdzone": False,
+                "uwaga": "Sam dodatni odczyt nie dowodzi pracy grzalki",
+            }
         if self._capability_id not in (24, 27, 72):
             return {}
         for device in self.coordinator.data or []:
@@ -748,6 +757,7 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
             "wiarygodnosc_temperatur": metrics.get("temperature_evidence"),
             "pewnosc_szacunku": metrics.get("confidence"),
             "roznica_temperatur_k": metrics.get("delta_t_k"),
+            "diagnostyka_grzalek": metrics.get("heater_evidence"),
             "metoda_probkowania": metrics.get("observation_method"),
             "skala_pradu_nadal_do_weryfikacji": metrics.get("counter_scale"),
             "ostatni_poprawny_szacunek_utc": metrics.get("last_cop_at"),
