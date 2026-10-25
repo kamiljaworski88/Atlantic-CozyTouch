@@ -75,6 +75,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
         AtlanticMonthlyEnergyProbeSensor(coordinator, entry.entry_id),
+        AtlanticDeviceEnergyProbeSensor(coordinator, entry.entry_id),
         AtlanticCompressorProbeSensor(coordinator, entry.entry_id),
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
@@ -395,6 +396,29 @@ class AtlanticMonthlyEnergyProbeSensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return dict(getattr(self.coordinator, "atlantic_monthly_energy", {}))
+
+
+class AtlanticDeviceEnergyProbeSensor(CoordinatorEntity, SensorEntity):
+    """Schema-only device consumption diagnostics, without private values."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Historia energii Atlantic · odczyt urządzenia"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:cloud-search-outline"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_device_energy_probe"
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, "atlantic_device_energy", {}).get(
+            "state", "nie_sprawdzono"
+        )
+
+    @property
+    def extra_state_attributes(self):
+        return dict(getattr(self.coordinator, "atlantic_device_energy", {}))
 
 
 class AtlanticConsumptionProbeSensor(CoordinatorEntity, SensorEntity):
