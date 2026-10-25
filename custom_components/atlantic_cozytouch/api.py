@@ -1,7 +1,7 @@
 """Atlantic HTTP client with a strict, read-only operation allowlist.
 
 No operation can mutate the device: POST is permitted only for OAuth login,
-and GET only for reading setup snapshots and consumption history.
+and GET only for setup, authorized device capabilities and consumption history.
 """
 
 from __future__ import annotations
