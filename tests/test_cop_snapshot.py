@@ -138,7 +138,7 @@ class SnapshotEstimatorTest(unittest.TestCase):
         devices[1]["values"][8] = 3.0
         self.est.ingest(devices, self.t)
         self.assertEqual(
-            self.est.metrics["status"], "grzalka_wspomagajaca_aktywna_niepelny_bilans"
+            self.est.metrics["status"], "grzalka_wspomagajaca_moc_dodatnia_w_zakresie_katalogu"
         )
         self.assertEqual(self.est.accumulated_intervals, 0)
 
