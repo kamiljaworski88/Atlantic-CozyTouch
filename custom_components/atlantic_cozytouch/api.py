@@ -20,6 +20,7 @@ from .const import (
     TOKEN_PATH,
 )
 from .readings import extract_devices
+from .discovery import compressor_host_devices
 from .consumption_probe import parse_setup_id, summarize_consumptions
 from .energy_daily import extract_electricity_days
 
@@ -64,6 +65,10 @@ class AtlanticReadOnlyClient:
         self._consumption_disabled = False
         self.consumption_summary: dict = {"state": "nie_sprawdzono"}
         self.energy_daily: dict[int, dict[str, float]] = {}
+        self._compressor_device_ids: set[str] = set()
+        self._compressor_probe_due = datetime.min.replace(tzinfo=timezone.utc)
+        self._compressor_probe_disabled = False
+        self.compressor_probe_summary: dict[str, object] = {"state": "nie_sprawdzono"}
 
     def _request(self, method: str, url: str, **kwargs):
         """Reject all methods/routes except vendor login and snapshot read.
@@ -78,7 +83,13 @@ class AtlanticReadOnlyClient:
             and self._setup_id is not None
             and url == self._consumption_url()
         )
-        if (method, url) not in _ALLOWED_HTTP_OPERATIONS and not consumption_allowed:
+        capability_allowed = (
+            method == "GET"
+            and any(url == self._compressor_capabilities_url(device_id)
+                    for device_id in self._compressor_device_ids)
+        )
+        if ((method, url) not in _ALLOWED_HTTP_OPERATIONS
+                and not consumption_allowed and not capability_allowed):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -98,6 +109,19 @@ class AtlanticReadOnlyClient:
             API_ORIGIN + f"/magellan/setups/{self._setup_id}/consumptions"
             "?periodicity=daily"
         )
+
+    @staticmethod
+    def _valid_device_id(value: object) -> bool:
+        return (
+            isinstance(value, str) and 1 <= len(value) <= 18
+            and value.isascii() and value.isdecimal()
+            and value[0] != "0" and int(value) <= 999999999999999999
+        )
+
+    def _compressor_capabilities_url(self, device_id: str) -> str:
+        if not self._valid_device_id(device_id) or device_id not in self._compressor_device_ids:
+            raise AtlanticError("Device is not an authorized compressor probe target")
+        return API_ORIGIN + "/magellan/capabilities/?deviceId=" + device_id
 
     def _ensure_not_throttled(self) -> None:
         if datetime.now(timezone.utc) < self._cooldown_until:
