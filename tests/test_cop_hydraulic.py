@@ -14,15 +14,19 @@ sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 
 
+MODE_STAMP = int(datetime(2026, 10, 25, 7, tzinfo=timezone.utc).timestamp())
+
+
 def sample(moment, energy_co=10000, energy_cwu=3000, flow=20, supply=34, ret=29.5, mode="CO",
-           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=0):
+           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=None):
     ts = int(moment.timestamp())
     interface = {
         "id": "private_interface", "reported_capability_ids": [57, 59, 91, 112],
         "values": {57: energy_co, 59: energy_cwu, 91: mode, 112: flow},
         "updated_at": {
             57: ts - electric_age, 59: ts - electric_age,
-            91: ts - mode_age, 112: ts - flow_age,
+            91: MODE_STAMP if mode_age is None else ts - mode_age,
+            112: ts - flow_age,
         },
     }
     generator = {
@@ -72,7 +76,9 @@ class TestHydraulicCop(unittest.TestCase):
         self.assertIsNone(self.monitor.metrics["cop"])
         # Circuit mode stale even when temperatures are fresh.
         self.monitor.ingest(sample(later, energy_co=10200, mode_age=3600), later)
-        self.assertEqual(self.monitor.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
+        # ID91 modificationDate records the last mode change, not heartbeat;
+        # an old timestamp alone is legitimate when the mode is stable.
+        self.assertEqual(self.monitor.metrics["status"], "zbieranie_pierwszej_probki")
 
     def test_trapezoidal_thermal_power_not_just_final_snapshot(self):
         self.monitor.ingest(sample(self.t), self.t)
@@ -93,6 +99,60 @@ class TestHydraulicCop(unittest.TestCase):
         self.monitor.ingest(sample(next_sample, energy_co=10400), next_sample)
         self.assertEqual(self.monitor.metrics["status"], "zbieranie_pierwszej_probki")
         self.assertIsNone(self.monitor.metrics["cop"])
+
+    def test_opt_in_allows_single_unique_pair_as_experimental_only(self):
+        pump = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        pump.ingest(sample(self.t, separate=True, mode_age=3600), self.t)
+        self.assertEqual(pump.metrics["status"], "zbieranie_pierwszej_probki")
+        second = self.t + timedelta(minutes=5)
+        pump.ingest(sample(second, energy_co=10200, separate=True,
+                           mode_age=3900), second)
+        self.assertEqual(pump.metrics["status"], "szacunek_eksperymentalny_miedzy_modulami")
+        self.assertEqual(pump.metrics["topology"], "jedyna_para_miedzy_modulami_opt_in")
+        self.assertEqual(pump.metrics["cop"], 2.62)
+        self.assertFalse(pump.metrics["cop_certified"])
+
+    def test_opt_in_still_rejects_ambiguous_generator(self):
+        pump = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        devices = sample(self.t, separate=True)
+        devices.append({**devices[1], "id": "other-generator"})
+        pump.ingest(devices, self.t)
+        self.assertEqual(pump.metrics["status"], "brak_jednoznacznych_zrodel")
+        self.assertIsNone(pump.metrics["cop"])
+
+    def test_cross_device_snapshot_skew_is_bounded(self):
+        pump = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        pump.ingest(sample(self.t, separate=True, flow_age=650), self.t)
+        self.assertEqual(pump.metrics["status"], "niespojne_czasy_probek")
+        self.assertIsNone(pump.metrics["cop"])
+
+    def test_mode_change_timestamp_resets_even_same_obieg(self):
+        pump = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        pump.ingest(sample(self.t, separate=True, mode_age=3600), self.t)
+        later = self.t + timedelta(minutes=5)
+        pump.ingest(sample(later, energy_co=10200, separate=True,
+                           mode_age=180), later)
+        self.assertEqual(pump.metrics["status"], "zmiana_trybu_pracy")
+        self.assertIsNone(pump.metrics["cop"])
+
+    def test_idle_does_not_generate_false_cop_but_keeps_last_good(self):
+        pump = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        pump.ingest(sample(self.t, separate=True), self.t)
+        t2 = self.t + timedelta(minutes=5)
+        pump.ingest(sample(t2, energy_co=10200, separate=True), t2)
+        self.assertEqual(pump.metrics["cop"], 2.62)
+        t3 = t2 + timedelta(minutes=5)
+        pump.ingest(sample(t3, energy_co=10200, separate=True, supply=25.8, ret=25.7), t3)
+        self.assertEqual(pump.metrics["status"], "brak_aktywnego_grzania")
+        self.assertIsNone(pump.metrics["cop"])
+        self.assertEqual(pump.metrics["last_cop"], 2.62)
+        pump.ingest([], t3 + timedelta(hours=13))
+        self.assertIsNone(pump.metrics["last_cop"])
+
+    def test_invalid_option_type_rejected(self):
+        for value in ("true", 1, None):
+            with self.assertRaises(ValueError):
+                mod.HydraulicCopEstimator(allow_unique_cross_device=value)
 
     def test_no_delta_is_unknown_not_zero_and_baseline_doesnt_shift(self):
         self.monitor.ingest(sample(self.t), self.t)

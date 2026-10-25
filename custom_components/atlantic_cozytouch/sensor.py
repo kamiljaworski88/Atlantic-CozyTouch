@@ -82,6 +82,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
         AtlanticThermalEvidenceSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "last_cop"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "thermal_kw"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "electrical_kw"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "status"),
@@ -676,6 +677,7 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
 
     LABELS = {
         "cop": ("COP Atlantic · szacunkowy", None),
+        "last_cop": ("COP Atlantic · ostatni poprawny szacunek (12 h)", None),
         "thermal_kw": ("Moc cieplna Atlantic · szacunkowa", "kW"),
         "electrical_kw": ("Moc elektryczna Atlantic · szacunkowa", "kW"),
         "status": ("COP Atlantic · status obliczeń", None),
@@ -701,6 +703,10 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
         metrics = self.coordinator.atlantic_hydraulic_cop.metrics
         return {
             "aktywny_obieg": metrics.get("circuit"),
+            "topologia_zrodel": metrics.get("topology"),
+            "wiek_probek_s": metrics.get("source_ages_seconds"),
+            "ostatni_poprawny_szacunek_utc": metrics.get("last_cop_at"),
+            "algorytm_eksperymentalny": True,
             "status_walidacji": metrics.get("status"),
             "metoda": "przeplyw_razy_delta_t_przez_przyrost_wh_na_czas",
             "potwierdzony_pomiar_cop": False,

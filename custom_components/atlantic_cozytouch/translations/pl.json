@@ -17,5 +17,16 @@
     "abort": {
       "already_configured": "To konto Atlantic jest już skonfigurowane."
     }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "Szacunkowy COP hydrauliczny",
+        "description": "Włącz tylko dla instalacji z jedną pompą ciepła Atlantic. Przepływ i licznik prądu z modułu interfejsu zostaną połączone z temperaturami z jedynego modułu generatora. API nie potwierdza ich fizycznego powiązania. Wynik jest szacunkiem; przy wyłączonym grzaniu pozostaje nieznany i nie nadaje się do rozliczeń energii.",
+        "data": {
+          "experimental_cross_device_cop": "Włącz eksperymentalny COP między jedyną parą modułów"
+        }
+      }
+    }
   }
 }
