@@ -784,6 +784,14 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
         )
         return {
             "cop_ostatni_zapisany_historyczny": is_last_sample,
+            "zrodlo_wyswietlanego_cop": metrics.get("cop_display_source"),
+            "zastepczy_cop_skumulowany": metrics.get("cop_uses_cumulative_fallback") is True,
+            "obieg_wyswietlanego_cop": metrics.get("cop_display_circuit"),
+            "uwaga_daty": (
+                "Brak daty pojedynczego wyniku z poprzedniej wersji; wartość skumulowana"
+                if self._metric == "cop" and metrics.get("cop_uses_cumulative_fallback")
+                else None
+            ),
             "cop_pochodzi_z_biezacej_probki": (
                 self._metric == "live_cop" and metrics.get("live_cop") is not None
             ),
