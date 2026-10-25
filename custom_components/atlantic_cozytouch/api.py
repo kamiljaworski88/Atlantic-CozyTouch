@@ -357,13 +357,26 @@ class AtlanticReadOnlyClient:
                     self.compressor_probe_summary = {"state": "niepoprawna_odpowiedz"}
                     return
                 source = sanitized[0]
+                allowed_ids = {24, 27, 51, 72}
+                # Discard everything except compressor values before caching.
+                source["values"] = {
+                    cap: value for cap, value in source["values"].items()
+                    if cap in allowed_ids
+                }
+                source["reported_capability_ids"] = [
+                    cap for cap in source["reported_capability_ids"] if cap in allowed_ids
+                ]
+                source["updated_at"] = {
+                    cap: stamp for cap, stamp in source.get("updated_at", {}).items()
+                    if cap in allowed_ids
+                }
                 self._compressor_cache[device["id"]] = (now, source)
                 for cap_id in (24, 27, 51, 72):
                     if cap_id not in source["reported_capability_ids"]:
                         continue
-                    if cap_id not in device["reported_capability_ids"]:
-                        gained += 1
                     fresh_value = source["values"].get(cap_id)
+                    if fresh_value is not None and device["values"].get(cap_id) is None:
+                        gained += 1
                     old_timestamp = device.get("updated_at", {}).get(cap_id)
                     new_timestamp = source.get("updated_at", {}).get(cap_id)
                     if (
