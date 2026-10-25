@@ -32,9 +32,13 @@ CAPABILITIES: dict[int, CapabilitySpec] = {
     27: CapabilitySpec("Czas pracy sprężarki", unit="s", category="duration", cumulative=True, diagnostic=True),
     28: CapabilitySpec("Czas pracy pompy CO", unit="h", category="duration", cumulative=True, diagnostic=True),
     29: CapabilitySpec("Czas pracy pompy CWU", unit="h", category="duration", cumulative=True, diagnostic=True),
-    44: CapabilitySpec("Zużycie energii elektrycznej CO", unit="kWh", category="energy", cumulative=True),
-    45: CapabilitySpec("Zużycie energii elektrycznej CWU", unit="kWh", category="energy", cumulative=True),
-    46: CapabilitySpec("Łączne zużycie energii elektrycznej", unit="kWh", category="energy", cumulative=True),
+    # Atlantic's own Magellan ProductModels catalogue calls 44/45/46
+    # HOME_GazHeat/DHW/TotalConsumptionCumulated: GAS, not electricity.
+    # Existing HA statistics used an erroneous /1000 conversion; quarantine
+    # these historical entity IDs as unitless diagnostic raw values.
+    44: CapabilitySpec("Gaz · ogrzewanie ID 44 (surowe)", diagnostic=True, publish_statistics=False),
+    45: CapabilitySpec("Gaz · CWU ID 45 (surowe)", diagnostic=True, publish_statistics=False),
+    46: CapabilitySpec("Gaz · suma ID 46 (surowe)", diagnostic=True, publish_statistics=False),
     # 57/59/60 appear in the Atlantic vendor mapping as ENERGY, but their
     # scaling, reset semantics and meaning on this model are not field-verified.
     # Expose raw numeric diagnostics WITHOUT kWh, energy device_class or statistics.
@@ -136,10 +140,11 @@ def normalize_value(capability_id: int, value: object) -> float | str | bool | N
         return None
     if capability_id in (57, 59, 60, 112) and number < 0:
         return None
-    # Atlantic publishes these electrical energy counters in Wh, not kWh.
-    # Conversion is required BEFORE exposing native_unit_of_measurement="kWh".
-    if capability_id in (44, 45, 46):
-        return number / 1000.0
+    # Keep wrongly mapped historical 44/45/46 sensors out of the HA Energy
+    # dashboard. They are vendor GAS capabilities and no electrical conversion
+    # is justified. We preserve numeric readings for diagnostics only.
+    if capability_id in (44, 45, 46) and number < 0:
+        return None
     return number
 
 

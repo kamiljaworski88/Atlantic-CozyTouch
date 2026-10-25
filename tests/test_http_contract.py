@@ -121,7 +121,7 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         session = Session()
         client = AtlanticReadOnlyClient(session, "test@example.invalid", "test-secret")
         result = await client.async_read()
-        self.assertEqual(result[0]["values"][44], 5.0)
+        self.assertEqual(result[0]["values"][44], 5000.0)  # raw GAS, not /1000 kWh electricity
         self.assertEqual(result[0]["values"][24], 21.0)
         self.assertTrue(result[0]["values"][51])
         self.assertEqual(
@@ -502,6 +502,82 @@ class TestMonthlyEndpoint(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(client.monthly_energy_summary, {"state": "nie_sprawdzono"})
         self.assertEqual(client._monthly_energy_url(),
                          API_ORIGIN + "/magellan/setups/456/consumptions?periodicity=monthly")
+
+
+class DeviceEnergySession(Session):
+    """Network-free test of vendor device-specific daily/monthly consumption."""
+    def __init__(self, device_status=200):
+        super().__init__(setup_payload=[{"id": 123, "devices": [{
+            "deviceId": 9, "name": "Simulated pump", "capabilities": [
+                {"capabilityId": 91, "value": "1"},
+                {"capabilityId": 112, "value": "16.33"},
+            ],
+        }]}])
+        self.device_status = device_status
+
+    def get(self, url, **kwargs):
+        if "/magellan/devices/9/consumptions?periodicity=" in url:
+            self.calls.append(("GET", url, kwargs))
+            return Reply(self.device_status, [{
+                "deviceId": "SECRET_IDENTIFIER",
+                "type": 1, "unit": 1, "category": 7,
+                "consumptionPeriods": [{
+                    "date": 1788825600,
+                    "consumedQuantity": 123456.789,
+                    "producedQuantity": 456789.123,
+                }],
+            }])
+        return super().get(url, **kwargs)
+
+
+class TestDeviceEnergyProbe(unittest.IsolatedAsyncioTestCase):
+    async def test_only_this_accounts_pump_and_exact_period_can_be_requested(self):
+        session = DeviceEnergySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+        day_url = API_ORIGIN + "/magellan/devices/9/consumptions?periodicity=daily"
+        month_url = API_ORIGIN + "/magellan/devices/9/consumptions?periodicity=monthly"
+        with self.assertRaises(AtlanticError):
+            client._request("GET", day_url)
+        await client.async_read()
+        for method, url in (
+            ("POST", day_url), ("PATCH", day_url),
+            ("GET", day_url + "&includeSecrets=true"),
+            ("GET", day_url.replace("/9/", "/10/")),
+            ("GET", day_url.replace("daily", "yearly")),
+        ):
+            with self.subTest(method=method, url=url), self.assertRaises(AtlanticError):
+                client._request(method, url)
+        await client.async_probe_device_energy()
+        self.assertEqual(client.device_energy_summary["state"], "dostepna")
+        self.assertEqual(client.device_energy_summary["daily"]["kategorie"], [7])
+        self.assertEqual(
+            client.device_energy_summary["daily"]["dodatnia_produkcja_niezweryfikowana"], 1
+        )
+        self.assertEqual(client.device_energy_summary["monthly"]["state"], "dostepna")
+        result = str(client.device_energy_summary)
+        for private in ("SECRET", "123456", "456789", "/9/", "1788825600"):
+            self.assertNotIn(private, result)
+        self.assertEqual(
+            [(m, u) for m, u, _ in session.calls][-2:],
+            [("GET", day_url), ("GET", month_url)],
+        )
+        await client.async_probe_device_energy()
+        self.assertEqual(
+            len([u for m, u, _ in session.calls if "/magellan/devices/" in u]), 2
+        )
+
+    async def test_rejected_or_throttled_device_history_does_not_break_pump_poll(self):
+        for status, label in ((403, "endpoint_niedostepny"),
+                              (404, "endpoint_niedostepny"),
+                              (429, "limit_zapytan"), (500, "blad_http")):
+            with self.subTest(status=status):
+                session = DeviceEnergySession(device_status=status)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+                await client.async_read()
+                await client.async_probe_device_energy()
+                self.assertEqual(client.device_energy_summary["state"], label)
+                self.assertNotIn("SECRET_IDENTIFIER", str(client.device_energy_summary))
+                self.assertIn(112, (await client.async_read())[0]["values"]) if status != 429 else None
 
 
 if __name__ == "__main__":

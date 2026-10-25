@@ -75,6 +75,10 @@ class AtlanticReadOnlyClient:
         self._compressor_setup_missing: set[str] = set()
         self._compressor_cache: dict[str, tuple[datetime, dict]] = {}
         self.compressor_probe_summary: dict[str, object] = {"state": "nie_sprawdzono"}
+        self._device_energy_ids: set[str] = set()
+        self._device_energy_due = datetime.min.replace(tzinfo=timezone.utc)
+        self._device_energy_disabled = False
+        self.device_energy_summary: dict[str, object] = {"state": "nie_sprawdzono"}
 
     def _request(self, method: str, url: str, **kwargs):
         """Reject all methods/routes except vendor login and snapshot read.
@@ -99,9 +103,17 @@ class AtlanticReadOnlyClient:
             and any(url == self._compressor_capabilities_url(device_id)
                     for device_id in self._compressor_device_ids)
         )
+        device_energy_allowed = (
+            method == "GET"
+            and any(
+                url == self._device_energy_url(device_id, period)
+                for device_id in self._device_energy_ids
+                for period in ("daily", "monthly")
+            )
+        )
         if ((method, url) not in _ALLOWED_HTTP_OPERATIONS
                 and not consumption_allowed and not monthly_allowed
-                and not capability_allowed):
+                and not capability_allowed and not device_energy_allowed):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -142,6 +154,18 @@ class AtlanticReadOnlyClient:
         if not self._valid_device_id(device_id) or device_id not in self._compressor_device_ids:
             raise AtlanticError("Device is not an authorized compressor probe target")
         return API_ORIGIN + "/magellan/capabilities/?deviceId=" + device_id
+
+    def _device_energy_url(self, device_id: str, period: str) -> str:
+        if (
+            not self._valid_device_id(device_id)
+            or device_id not in self._device_energy_ids
+            or period not in ("daily", "monthly")
+        ):
+            raise AtlanticError("Device energy GET outside authenticated allowlist")
+        return (
+            API_ORIGIN + "/magellan/devices/" + device_id
+            + "/consumptions?periodicity=" + period
+        )
 
     def _ensure_not_throttled(self) -> None:
         if datetime.now(timezone.utc) < self._cooldown_until:
@@ -270,11 +294,24 @@ class AtlanticReadOnlyClient:
             self._compressor_probe_disabled = False
             self._compressor_cache = {}
             self.compressor_probe_summary = {"state": "nie_sprawdzono"}
+            self._device_energy_due = datetime.min.replace(tzinfo=timezone.utc)
+            self._device_energy_disabled = False
+            self.device_energy_summary = {"state": "nie_sprawdzono"}
         # IDs come only from the authenticated account's setup snapshot.
         hosts = compressor_host_devices(devices)
         self._compressor_device_ids = {
             d["id"] for d in hosts[:2] if self._valid_device_id(d["id"])
         }
+        # Require a unique actual pump (active circuit + flow) to prevent
+        # querying unrelated devices, even those on the same account.
+        energy_hosts = [
+            d for d in hosts
+            if {91, 112}.issubset(set(d.get("reported_capability_ids", [])))
+            and self._valid_device_id(d["id"])
+        ]
+        self._device_energy_ids = (
+            {energy_hosts[0]["id"]} if len(energy_hosts) == 1 else set()
+        )
         self._compressor_setup_missing = {
             d["id"] for d in hosts[:2]
             if d["id"] in self._compressor_device_ids
@@ -310,6 +347,77 @@ class AtlanticReadOnlyClient:
                     set(device["reported_capability_ids"]) | {cap_id}
                 )
         return devices
+
+    async def async_probe_device_energy(self) -> None:
+        """Optional safe device-level consumption schema test.
+
+        Compare daily/monthly reports for exactly one authenticated heat pump.
+        Run at most once per six hours. Only safe codes and record counts
+        survive; producedQuantity alone never proves delivered heat.
+        """
+        now = datetime.now(timezone.utc)
+        if self._device_energy_disabled or now < self._device_energy_due:
+            return
+        self._device_energy_due = now + timedelta(hours=6)
+        if len(self._device_energy_ids) != 1 or self._token is None:
+            self.device_energy_summary = {"state": "brak_jednoznacznej_pompy"}
+            return
+        device_id = next(iter(self._device_energy_ids))
+        summaries: dict[str, dict] = {}
+        for period in ("daily", "monthly"):
+            try:
+                self._ensure_not_throttled()
+                async with self._request(
+                    "GET", self._device_energy_url(device_id, period),
+                    headers={
+                        "Authorization": "Bearer " + self._token,
+                        "Accept": "application/json",
+                    },
+                ) as response:
+                    if response.status == 429:
+                        self._note_rate_limited(response)
+                        summaries[period] = {"state": "limit_zapytan"}
+                        break
+                    if response.status == 401:
+                        self._token = None
+                        summaries[period] = {"state": "brak_autoryzacji"}
+                        break
+                    if response.status in (403, 404, 405):
+                        summaries[period] = {"state": "endpoint_niedostepny"}
+                        if period == "daily":
+                            self._device_energy_disabled = True
+                            break
+                        continue
+                    if response.status != 200:
+                        summaries[period] = {"state": "blad_http"}
+                        if period == "daily":
+                            break
+                        continue
+                    payload = await response.json()
+                details = summarize_consumptions(payload)
+                summaries[period] = {
+                    "state": details.get("state"),
+                    "serie": details.get("serie", 0),
+                    "typy": details.get("typy", []),
+                    "jednostki": details.get("jednostki", []),
+                    "rekordy_zuzycia": details.get("okresy_z_energia_pobrana", 0),
+                    "dodatnia_produkcja_niezweryfikowana":
+                        details.get("okresy_z_dodatnia_produkcja", 0),
+                    "kategorie": sorted({
+                        d["kategoria_kod"] for d in details.get("serie_szczegoly", [])
+                        if type(d.get("kategoria_kod")) is int
+                    }),
+                }
+            except (AtlanticRateLimited, aiohttp.ClientError, TimeoutError,
+                    ValueError, TypeError, OverflowError, AtlanticError):
+                summaries[period] = {"state": "blad_polaczenia"}
+                break
+        self.device_energy_summary = {
+            "state": summaries.get("daily", {}).get("state", "nie_sprawdzono"),
+            "daily": summaries.get("daily", {}),
+            "monthly": summaries.get("monthly", {}),
+            "czy_produkcja_oznacza_cieplo": "niezweryfikowane",
+        }
 
     async def async_probe_compressor_capabilities(self, devices: list[dict]) -> None:
         """Optional read-only device GET when setupviewv2 omits compressor data.

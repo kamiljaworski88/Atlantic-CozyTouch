@@ -178,7 +178,9 @@ class TestConsumptionProbe(unittest.TestCase):
         self.assertEqual(result, {
             "status": "odczytany",
             "prad_co": True, "prad_cwu": True,
-            "produkcja_ciepla_co": True, "produkcja_ciepla_cwu": True,
+            "produkcja_ciepla_co": None, "produkcja_ciepla_cwu": None,
+            "niezdefiniowane_bity": 256 + 1024,
+            "produkcja_ciepla_wg_katalogu": "brak_potwierdzonej_flagi",
         })
         self.assertEqual(module.energy_capabilities_summary([])["status"], "niezgloszony")
         self.assertEqual(module.energy_capabilities_summary([{

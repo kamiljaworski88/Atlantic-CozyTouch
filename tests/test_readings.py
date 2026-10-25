@@ -67,15 +67,20 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(devices[0]["reported_capability_ids"], [100506])
         self.assertNotIn("must not be exported", str(devices))
 
-    def test_energy_in_watt_hours_converted_to_kwh(self):
-        self.assertEqual(module.normalize_value(44, 12345), 12.345)
-        self.assertEqual(module.normalize_value(45, "500"), 0.5)
+    def test_44_45_46_are_gas_not_electricity_and_have_no_statistics(self):
+        # Vendor's Magellan_ProductModels catalogue: HOME_Gaz*ConsumptionCumulated.
+        # Do not continue populating HA electricity statistics with gas counters.
+        self.assertEqual(module.normalize_value(44, 12345), 12345)
+        self.assertEqual(module.normalize_value(45, "500"), 500)
         self.assertEqual(module.normalize_value(46, 0), 0.0)
-        for capability in (44, 45, 46):
-            spec = module.CAPABILITIES[capability]
-            self.assertEqual(spec.unit, "kWh")
-            self.assertEqual(spec.category, "energy")
-            self.assertTrue(spec.cumulative)
+        for cap_id in (44, 45, 46):
+            spec = module.CAPABILITIES[cap_id]
+            self.assertIn("Gaz", spec.title)
+            self.assertIsNone(spec.unit)
+            self.assertIsNone(spec.category)
+            self.assertFalse(spec.publish_statistics)
+            self.assertTrue(spec.diagnostic)
+            self.assertIsNone(module.normalize_value(cap_id, -2))
 
     def test_compressor_modulation_timestamp_is_parsed_safely(self):
         payload = [{"devices": [{

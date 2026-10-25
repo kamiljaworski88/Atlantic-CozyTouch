@@ -164,10 +164,16 @@ def energy_capabilities_summary(devices: list[dict]) -> dict:
     mask = 0
     for item in masks:
         mask |= item
+    # Official HOME_EnergyConsumptionCapabilities enum documents ONLY bits
+    # 1, 2, 4, 8, 16, 32, 64 (gas/electric/fuel *consumption*).
+    # Bits 256/1024 appear on this model but do not have an evidenced meaning;
+    # they MUST NOT be misrepresented as produced thermal energy.
     return {
         "status": "odczytany",
         "prad_co": bool(mask & 2),
         "prad_cwu": bool(mask & 16),
-        "produkcja_ciepla_co": bool(mask & 256),
-        "produkcja_ciepla_cwu": bool(mask & 1024),
+        "produkcja_ciepla_co": None,
+        "produkcja_ciepla_cwu": None,
+        "niezdefiniowane_bity": mask & ~127,
+        "produkcja_ciepla_wg_katalogu": "brak_potwierdzonej_flagi",
     }

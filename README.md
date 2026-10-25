@@ -2,16 +2,40 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.5 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.6 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
-- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz odczyty `GET`: `/magellan/cozytouch/setupviewv2`, `/magellan/setups/{setupId}/consumptions?periodicity=daily`, `/magellan/setups/{setupId}/consumptions?periodicity=monthly` i `/magellan/capabilities/?deviceId=…` (wyłącznie potwierdzone ID pompy przypisane do zalogowanego konta).
+- Warstwa sieciowa dopuszcza wyłącznie `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz odczyty `GET`: `/magellan/cozytouch/setupviewv2`, `/magellan/setups/{setupId}/consumptions?periodicity=daily`, `/magellan/setups/{setupId}/consumptions?periodicity=monthly` i `/magellan/capabilities/?deviceId=…` oraz `/magellan/devices/{deviceId}/consumptions?periodicity=daily|monthly` (ostatnia para wyłącznie dla jednej rozpoznanej pompy z konta, maksymalnie co 6 godzin).
 - Bez serwerów pośredniczących autora integracji, analityki i eksportu danych. **Integracja wymaga chmury producenta**, a nie działa lokalnie/offline.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.6 — audyt katalogu producenta i bezpieczny test historii urządzenia
+
+- **Krytyczna korekta:** ID **44, 45, 46** oznaczają *zużycie gazu*
+  według katalogu Atlantic, a nie energię elektryczną. Zachowujemy
+  `unique_id`, ale wyłączamy błędną konwersję /1000, jednostki i
+  statystyki HA Energy; historyczny Recorder nie jest modyfikowany.
+- ID **57/59** to w katalogu elektryczność CO/CWU, co wspierają zdjęcia
+  sterownika. Skalowanie surowego odczytu /1000 pozostaje hipotezą
+  diagnostyczną aż do potwierdzenia okresu i resetu licznika.
+- ID **164** to maska możliwości pomiaru **zużycia**. Jej bity 256 i
+  1024 są nieudokumentowane w katalogu, więc nie oznaczamy ich
+  dłużej automatycznie jako „pomiar produkcji ciepła”.
+- Nowy tylko-GET, bezpiecznie ograniczony do jednej pompy z konta:
+  `/magellan/devices/{deviceId}/consumptions?periodicity=daily|monthly`
+  (najwyżej co 6 godzin). Sprawdza wyłącznie anonimową strukturę
+  odpowiedzi w encji **Historia energii Atlantic · odczyt urządzenia**.
+  Nie pobiera ani nie publikuje kont, tokenów, kosztów ani wartości
+  energetycznych do diagnostyki; brak serwerów pośredniczących i
+  komend sterujących.
+- Dane wyprodukowanego **ciepła** nadal nie są potwierdzone w
+  publicznym katalogu ani dotychczasowej historii chmury. Żadnego
+  sztucznie wyliczanego miesięcznego COP.
+- [Raport źródeł, testu i ograniczeń](docs/ATLANTIC_API_AUDIT_0_5_6.md).
 
 ## v0.5.5 — weryfikacja miesięcznej produkcji ciepła w API
 
@@ -202,7 +226,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 27 | czas pracy sprężarki (wg API: sekundy) |
 | 51 | stan sprężarki |
 | 72 | modulacja sprężarki (%) |
-| 44, 45, 46 | liczniki elektrycznego zużycia CO, CWU i łącznego, automatycznie przeliczone z Wh na kWh |
+| 44, 45, 46 | surowe wskazania zużycia **gazu** CO, CWU i łącznego; bez statystyk i konwersji |
 | 100 | ciśnienie wody |
 | 109 | temperatura wody obiegu |
 | 111 | temperatura CWU |
@@ -210,7 +234,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 119 | temperatura zewnętrzna |
 | 6, 150, 180 | diagnostyczne kody błędów |
 
-Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są obliczane bez wiarygodnych pomiarów. Wartości zużycia elektrycznego 44–46 mają w API jednostkę Wh i są prezentowane w kWh.**
+Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **Rzeczywisty COP okresowy wymaga wiarygodnego odczytu wytworzonego ciepła i pobranej energii elektrycznej z tego samego okresu. ID 44–46 oznaczają gaz, a nie prąd.**
 
 ## Instalacja (dopiero po przeglądzie PR)
 
