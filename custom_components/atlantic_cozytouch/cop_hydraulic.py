@@ -38,6 +38,15 @@ def _timestamp(device: dict, capability: int, now: datetime) -> int | None:
     return ts if -60 <= age <= MAX_SENSOR_AGE_S else None
 
 
+def _age_seconds(device: dict, capability: int, now: datetime) -> int | None:
+    """Bounded, non-identifying age diagnostic, never the raw vendor epoch."""
+    ts = device.get("updated_at", {}).get(capability)
+    if type(ts) is not int:
+        return None
+    age = round(now.timestamp() - ts)
+    return age if 0 <= age <= 86_400 else None
+
+
 def _with_ids(devices: list[dict], *ids: int) -> list[dict]:
     required = set(ids)
     return [dev for dev in devices
@@ -100,6 +109,7 @@ class HydraulicCopEstimator:
         interface, generator = interfaces[0], generators[0]
         paired = interface.get("id") == generator.get("id")
         if not paired and not self.allow_unique_cross_device:
+            self.metrics["topology"] = "oddzielne_moduly_wymaga_opcji_ha"
             self._baseline = None
             self.metrics["status"] = "niepotwierdzone_powiazanie_obiegu"
             return
@@ -114,6 +124,13 @@ class HydraulicCopEstimator:
             self.metrics["status"] = "nieznany_obieg"
             return
         cap = 57 if circuit == "CO" else 59
+
+        self.metrics["source_ages_seconds"] = {
+            "przeplyw": _age_seconds(interface, 112, now),
+            "zasilanie": _age_seconds(generator, 109, now),
+            "powrot": _age_seconds(generator, 116, now),
+            "licznik_pradu": _age_seconds(interface, cap, now),
+        }
 
         # ID91 modificationDate marks the last mode SWITCH, so do not
         # require it to be younger than 15 min. Compare across baselines
