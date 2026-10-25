@@ -13,6 +13,7 @@ from .const import DOMAIN, POLL_SECONDS
 from .energy_validation import freshness_status
 from .consumption_probe import energy_capabilities_summary, production_heat_feature_flags
 from .energy_preview import ENERGY_CANDIDATES, candidate_kwh, candidate_summary, cop_readiness
+from .thermal_evidence import thermal_evidence
 from .compressor import COMPRESSOR_DERIVED_SPECS
 from .discovery import compressor_host_devices, new_capabilities, inventory_summary
 from .readings import CAPABILITIES
@@ -79,6 +80,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticDeviceEnergyProbeSensor(coordinator, entry.entry_id),
         AtlanticCompressorProbeSensor(coordinator, entry.entry_id),
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
+        AtlanticThermalEvidenceSensor(coordinator, entry.entry_id),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "thermal_kw"),
         AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "electrical_kw"),
@@ -550,6 +552,36 @@ class AtlanticCopReadinessSensor(CoordinatorEntity, SensorEntity):
             "cop_wyliczony": False,
             "powod": "Brak zweryfikowanych pomiarów ciepła i energii elektrycznej w tym samym okresie",
         }
+
+class AtlanticThermalEvidenceSensor(CoordinatorEntity, SensorEntity):
+    """Read-only anonymized four-source audit; never exposes heat kWh or COP."""
+
+    _attr_has_entity_name = True
+    _attr_name = "COP Atlantic · audyt źródeł ciepła"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clipboard-search-outline"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_thermal_evidence"
+
+    def _summary(self) -> dict:
+        return thermal_evidence(
+            getattr(self.coordinator, "atlantic_consumptions", {}),
+            getattr(self.coordinator, "atlantic_monthly_energy", {}),
+            getattr(self.coordinator, "atlantic_device_energy", {}),
+            production_heat_feature_flags(self.coordinator.data or []),
+        )
+
+    @property
+    def native_value(self):
+        return self._summary()["status"]
+
+    @property
+    def extra_state_attributes(self):
+        summary = self._summary()
+        return {k: v for k, v in summary.items() if k != "status"}
+
 
 class AtlanticDailyElectricitySensor(CoordinatorEntity, SensorEntity):
     """Daily cloud electricity for exactly one category and one UTC day.
