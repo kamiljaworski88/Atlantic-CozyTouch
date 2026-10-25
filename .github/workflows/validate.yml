@@ -61,6 +61,13 @@ jobs:
 
           # Exercise actual entity registration (not only module imports).
           import asyncio
+          from custom_components.atlantic_cozytouch.config_flow import (
+              AtlanticReadOnlyConfigFlow, AtlanticReadOnlyOptionsFlow
+          )
+          assert isinstance(
+              AtlanticReadOnlyConfigFlow.async_get_options_flow(None),
+              AtlanticReadOnlyOptionsFlow,
+          )
           from custom_components.atlantic_cozytouch.const import DOMAIN
           from custom_components.atlantic_cozytouch import sensor as sen, binary_sensor as bin_sen
           from custom_components.atlantic_cozytouch.compressor import CompressorMonitor
@@ -106,6 +113,11 @@ jobs:
               assert audit._attr_unique_id == "atlantic_cozytouch_smoke_thermal_evidence"
               assert audit.native_value == "oczekiwanie_na_dane"
               assert audit.extra_state_attributes["cop_okresowy_gotowy"] is False
+              last_cop = next(
+                  e for e in sensors
+                  if e._attr_name == "COP Atlantic · ostatni poprawny szacunek (12 h)"
+              )
+              assert last_cop._attr_unique_id == "atlantic_cozytouch_smoke_hydraulic_last_cop"
               readiness = next(
                   e for e in sensors if e._attr_name == "COP Atlantic · gotowość danych"
               )
