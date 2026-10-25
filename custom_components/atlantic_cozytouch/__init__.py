@@ -13,7 +13,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, UpdateFailed
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
-from .const import DOMAIN, POLL_SECONDS
+from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
 from .compressor import CompressorMonitor
 from .cop_hydraulic import HydraulicCopEstimator
 from .energy_validation import EnergyValidationMonitor
@@ -32,7 +32,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
 
     compressor_monitor = CompressorMonitor()
     energy_monitor = EnergyValidationMonitor()
-    cop_monitor = HydraulicCopEstimator()
+    cop_monitor = HydraulicCopEstimator(
+        allow_unique_cross_device=(
+            entry.options.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
+        )
+    )
 
     async def update():
         try:
@@ -87,6 +91,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    entry.async_on_unload(entry.add_update_listener(_async_update_options))
     return True
 
 
@@ -96,3 +101,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if unloaded:
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
+
+
+async def _async_update_options(hass: HomeAssistant, entry: ConfigEntry) -> None:
+    """Restart one estimator after opt-in changes; never mix old baselines."""
+    await hass.config_entries.async_reload(entry.entry_id)
