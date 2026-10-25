@@ -103,14 +103,25 @@ class TestObservedEnergyWindows(unittest.TestCase):
         self.assertEqual(self.window.diagnostics()["status"],
                          "zmiana_trybu_lub_niespojne_czujniki")
 
-    def test_short_meter_window_never_competes_with_legacy_short_estimator(self):
+    def test_less_than_twelve_minutes_between_meter_events_never_counts(self):
         self.window.ingest(sample(0, 10000, -10))
         self.window.ingest(sample(3, 10100, 3))
-        for m in (6, 9, 12, 15):
+        for m in (6, 9):
             self.window.ingest(sample(m, 10100, 3))
-        self.assertIsNone(self.window.ingest(sample(18, 10200, 18)))
+        self.assertIsNone(self.window.ingest(sample(12, 10200, 12)))
         self.assertEqual(self.window.diagnostics()["status"],
-                         "krotkie_okno_obslugiwane_przez_stary_algorytm")
+                         "za_krotkie_okno_licznika_mniej_niz_12_minut")
+
+    def test_exactly_twelve_minutes_can_count_if_all_samples_witnessed(self):
+        self.window.ingest(sample(0, 10000, -10))
+        self.window.ingest(sample(3, 10100, 3))
+        for m in (6, 9, 12):
+            self.window.ingest(sample(m, 10100, 3))
+        result = self.window.ingest(sample(15, 10200, 15))
+        self.assertIsNotNone(result)
+        self.assertEqual(result.seconds, 12*60)
+        self.assertEqual(result.segment_count, 4)
+
 
     def test_reset_explicitly_wipes_unfinished_window(self):
         self.window.ingest(sample(0, 10000, -10))
