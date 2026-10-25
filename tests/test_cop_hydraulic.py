@@ -14,15 +14,19 @@ sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 
 
+MODE_STAMP = int(datetime(2026, 10, 25, 7, tzinfo=timezone.utc).timestamp())
+
+
 def sample(moment, energy_co=10000, energy_cwu=3000, flow=20, supply=34, ret=29.5, mode="CO",
-           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=0):
+           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=None):
     ts = int(moment.timestamp())
     interface = {
         "id": "private_interface", "reported_capability_ids": [57, 59, 91, 112],
         "values": {57: energy_co, 59: energy_cwu, 91: mode, 112: flow},
         "updated_at": {
             57: ts - electric_age, 59: ts - electric_age,
-            91: ts - mode_age, 112: ts - flow_age,
+            91: MODE_STAMP if mode_age is None else ts - mode_age,
+            112: ts - flow_age,
         },
     }
     generator = {
