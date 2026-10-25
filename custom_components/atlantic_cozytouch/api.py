@@ -348,6 +348,77 @@ class AtlanticReadOnlyClient:
                 )
         return devices
 
+    async def async_probe_device_energy(self) -> None:
+        """Optional safe device-level consumption schema test.
+
+        Compare daily/monthly reports for exactly one authenticated heat pump.
+        Run at most once per six hours. Only safe codes and record counts
+        survive; producedQuantity alone never proves delivered heat.
+        """
+        now = datetime.now(timezone.utc)
+        if self._device_energy_disabled or now < self._device_energy_due:
+            return
+        self._device_energy_due = now + timedelta(hours=6)
+        if len(self._device_energy_ids) != 1 or self._token is None:
+            self.device_energy_summary = {"state": "brak_jednoznacznej_pompy"}
+            return
+        device_id = next(iter(self._device_energy_ids))
+        summaries: dict[str, dict] = {}
+        for period in ("daily", "monthly"):
+            try:
+                self._ensure_not_throttled()
+                async with self._request(
+                    "GET", self._device_energy_url(device_id, period),
+                    headers={
+                        "Authorization": "Bearer " + self._token,
+                        "Accept": "application/json",
+                    },
+                ) as response:
+                    if response.status == 429:
+                        self._note_rate_limited(response)
+                        summaries[period] = {"state": "limit_zapytan"}
+                        break
+                    if response.status == 401:
+                        self._token = None
+                        summaries[period] = {"state": "brak_autoryzacji"}
+                        break
+                    if response.status in (403, 404, 405):
+                        summaries[period] = {"state": "endpoint_niedostepny"}
+                        if period == "daily":
+                            self._device_energy_disabled = True
+                            break
+                        continue
+                    if response.status != 200:
+                        summaries[period] = {"state": "blad_http"}
+                        if period == "daily":
+                            break
+                        continue
+                    payload = await response.json()
+                details = summarize_consumptions(payload)
+                summaries[period] = {
+                    "state": details.get("state"),
+                    "serie": details.get("serie", 0),
+                    "typy": details.get("typy", []),
+                    "jednostki": details.get("jednostki", []),
+                    "rekordy_zuzycia": details.get("okresy_z_energia_pobrana", 0),
+                    "dodatnia_produkcja_niezweryfikowana":
+                        details.get("okresy_z_dodatnia_produkcja", 0),
+                    "kategorie": sorted({
+                        d["kategoria_kod"] for d in details.get("serie_szczegoly", [])
+                        if type(d.get("kategoria_kod")) is int
+                    }),
+                }
+            except (AtlanticRateLimited, aiohttp.ClientError, TimeoutError,
+                    ValueError, TypeError, OverflowError, AtlanticError):
+                summaries[period] = {"state": "blad_polaczenia"}
+                break
+        self.device_energy_summary = {
+            "state": summaries.get("daily", {}).get("state", "nie_sprawdzono"),
+            "daily": summaries.get("daily", {}),
+            "monthly": summaries.get("monthly", {}),
+            "czy_produkcja_oznacza_cieplo": "niezweryfikowane",
+        }
+
     async def async_probe_compressor_capabilities(self, devices: list[dict]) -> None:
         """Optional read-only device GET when setupviewv2 omits compressor data.
 
