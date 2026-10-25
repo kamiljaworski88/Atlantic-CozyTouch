@@ -150,28 +150,57 @@ class HydraulicCopEstimator:
         self.metrics["last_cop_co"] = (self.last_cops.latest("CO") or {}).get("value")
         self.metrics["last_cop_cwu"] = (self.last_cops.latest("CWU") or {}).get("value")
         self.metrics["cop_is_historical"] = False
+        self.metrics["cop_display_source"] = "ostatni_zaakceptowany_przedzial"
+        self.metrics["cop_uses_cumulative_fallback"] = False
+        self.metrics["cop_display_circuit"] = circuit
 
 
     def _empty(self, now: datetime | None = None) -> dict[str, object]:
         latest = self.last_cops.latest()
         co = self.last_cops.latest("CO")
         cwu = self.last_cops.latest("CWU")
-        value = latest["value"] if latest else None
+        # Versions <=0.5.18 persisted valid *cumulative* COP, but did not
+        # persist the timestamp/value of the last individual accepted sample.
+        # A read-only display fallback prevents 'unknown' after an upgrade.
+        # NEVER claim that an aggregate ratio is the latest interval or
+        # assign an invented timestamp. The source is explicitly identified.
+        snapshot = self.accumulator.snapshot()
+        rows = snapshot["total"]
+        fallback = (
+            rows["cop"] if latest is None and rows["intervals"] > 0 else None
+        )
+        display = latest["value"] if latest else fallback
+        has_co = snapshot["CO"]["intervals"] > 0
+        has_cwu = snapshot["CWU"]["intervals"] > 0
+        fallback_circuit = (
+            "CO+CWU" if has_co and has_cwu else
+            "CO" if has_co else
+            "CWU" if has_cwu else None
+        )
         return {
             "status": "brak_danych",
             "thermal_kw": None, "electrical_kw": None,
-            "cop": value,
+            "cop": display,
             "live_cop": None,
             "circuit": None, "topology": "nieustalona",
             "source_ages_seconds": {},
-            "last_cop": value,
+            "last_cop": latest["value"] if latest else None,
             "last_cop_at": latest["at"] if latest else None,
             "last_cop_circuit": latest["circuit"] if latest else None,
             "last_cop_quality": latest["quality"] if latest else None,
             "last_cop_source": latest["source"] if latest else None,
             "last_cop_co": co["value"] if co else None,
             "last_cop_cwu": cwu["value"] if cwu else None,
-            "cop_is_historical": latest is not None,
+            "cop_is_historical": display is not None,
+            "cop_display_source": (
+                "ostatni_zaakceptowany_przedzial" if latest else
+                "zastepczy_cop_skumulowany_bez_daty" if fallback is not None else
+                "brak"
+            ),
+            "cop_uses_cumulative_fallback": fallback is not None,
+            "cop_display_circuit": (
+                latest["circuit"] if latest else fallback_circuit
+            ),
             "cop_certified": False,
             "temperature_evidence": "nie_sprawdzono",
             "confidence": "brak",
