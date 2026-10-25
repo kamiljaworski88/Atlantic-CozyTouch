@@ -184,7 +184,7 @@ def extract_devices(payload: object) -> list[dict]:
                 if not 0 <= cap_id <= MAX_CAPABILITY_ID:
                     continue
                 reported_ids.add(cap_id)
-                if cap_id in (57, 59, 91, 109, 112, 116):
+                if cap_id in (51, 57, 59, 72, 91, 109, 112, 116):
                     timestamp = cap.get("modificationDate")
                     if type(timestamp) is int and 1577836800 <= timestamp <= 4102444799:
                         updated_at[cap_id] = timestamp
