@@ -132,6 +132,16 @@ class SnapshotEstimatorTest(unittest.TestCase):
         self.est.ingest(capture(self.t, compressor=False), self.t)
         self.assertEqual(self.est.metrics["status"], "sprezarka_wylaczona")
 
+    def test_positive_auxiliary_heater_power_blocks_incomplete_energy_balance(self):
+        devices = capture(self.t)
+        devices[1]["reported_capability_ids"].append(8)
+        devices[1]["values"][8] = 3.0
+        self.est.ingest(devices, self.t)
+        self.assertEqual(
+            self.est.metrics["status"], "grzalka_wspomagajaca_aktywna_niepelny_bilans"
+        )
+        self.assertEqual(self.est.accumulated_intervals, 0)
+
     def test_no_delta_does_not_invent_consumption_and_can_bridge_short_stall(self):
         self.est.ingest(capture(self.t), self.t)
         middle = self.t + timedelta(minutes=3)
