@@ -48,6 +48,16 @@ class TestAccumulator(unittest.TestCase):
         self.assertEqual(restored.snapshot()["CO"]["cop"], 3.0)
         self.assertEqual(restored.snapshot()["CO"]["intervals"], 2)
 
+    def test_complete_hourly_window_can_be_persisted_and_recovered(self):
+        accumulator = mod.CopEnergyAccumulator()
+        self.assertTrue(accumulator.add("CO", 1.6, 0.4, 2400))
+        export = accumulator.export_state()
+        restored = mod.CopEnergyAccumulator()
+        self.assertTrue(restored.restore_state(export))
+        self.assertEqual(restored.snapshot()["CO"]["intervals"], 1)
+        self.assertEqual(restored.snapshot()["CO"]["cop"], 4.0)
+        self.assertEqual(restored.snapshot()["CO"]["covered_hours"], 0.67)
+
     def test_reject_malformed_restore_without_partial_mutation(self):
         accumulator = mod.CopEnergyAccumulator()
         self.assertTrue(accumulator.add("CO", 0.6, 0.2, 300))
@@ -74,7 +84,7 @@ class TestAccumulator(unittest.TestCase):
             ("CO", 0.2, 0, 300),
             ("CO", 1, 0.001, 300),
             ("CO", 0.3, 0.2, 30),
-            ("CO", 0.3, 0.2, 1500),
+            ("CO", 0.3, 0.2, 3601),
             ("CWU", True, 0.1, 300),
             ("CO", float("nan"), 0.1, 300),
             ("CO", 0.5, float("inf"), 300),
