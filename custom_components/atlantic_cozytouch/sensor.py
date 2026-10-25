@@ -73,6 +73,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
         AtlanticCopReadinessSensor(coordinator, entry.entry_id),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "cop"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "thermal_kw"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "electrical_kw"),
+        AtlanticHydraulicCopSensor(coordinator, entry.entry_id, "status"),
         AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 1, 0),
         AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 2, 0),
         AtlanticDailyElectricitySensor(coordinator, entry.entry_id, 1, 1),
@@ -492,3 +496,44 @@ class AtlanticDailyElectricitySensor(CoordinatorEntity, SensorEntity):
         if self._offset == 0:
             result["historia_ostatnich_7_dni_utc"] = history
         return result
+
+
+class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
+    """Experimental hydraulic estimate, NEVER a verified COP or energy meter."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:gauge"
+
+    LABELS = {
+        "cop": ("COP Atlantic · szacunkowy", None),
+        "thermal_kw": ("Moc cieplna Atlantic · szacunkowa", "kW"),
+        "electrical_kw": ("Moc elektryczna Atlantic · szacunkowa", "kW"),
+        "status": ("COP Atlantic · status obliczeń", None),
+    }
+
+    def __init__(self, coordinator, entry_id: str, metric: str) -> None:
+        super().__init__(coordinator)
+        if metric not in self.LABELS:
+            raise ValueError("Unsupported hydraulic metric")
+        self._metric = metric
+        self._attr_name, self._attr_native_unit_of_measurement = self.LABELS[metric]
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_hydraulic_{metric}"
+        # Deliberately no state_class: no HA long-term/energy statistics.
+
+    @property
+    def native_value(self):
+        if not self.coordinator.last_update_success:
+            return None
+        return self.coordinator.atlantic_hydraulic_cop.metrics.get(self._metric)
+
+    @property
+    def extra_state_attributes(self):
+        metrics = self.coordinator.atlantic_hydraulic_cop.metrics
+        return {
+            "aktywny_obieg": metrics.get("circuit"),
+            "status_walidacji": metrics.get("status"),
+            "metoda": "przeplyw_razy_delta_t_przez_przyrost_wh_na_czas",
+            "potwierdzony_pomiar_cop": False,
+            "do_rozliczen_energii": False,
+        }
