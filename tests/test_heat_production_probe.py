@@ -33,7 +33,8 @@ class TestHeatCandidates(unittest.TestCase):
         }]
         actual = mod.summarize_production_candidates(payload, "2026-10")
         self.assertEqual(actual["dodatnie_producedquantity"], 2)
-        self.assertEqual(actual["kandydaci"][0]["wyprodukowano_surowa_ilosc"], 76)
+        self.assertTrue(actual["kandydaci"][0]["produkcja_dodatnia"])
+        self.assertTrue(actual["kandydaci"][0]["pobor_liczbowy"])
         self.assertEqual(actual["kandydaci"][0]["miesiac_utc"], "2026-10")
         self.assertEqual(actual["kandydaci"][1]["miesiac_utc"], "2026-09")
         self.assertEqual(actual["czy_to_cieplo"], "NIEZWERYFIKOWANE")
@@ -41,6 +42,10 @@ class TestHeatCandidates(unittest.TestCase):
         self.assertNotIn("PRIVATE_DEVICE_ID", str(actual))
         self.assertNotIn("PRIVATE_SERIAL", str(actual))
         self.assertNotIn("SECRET", str(actual))
+        self.assertNotIn("76", str(actual))
+        self.assertNotIn("36", str(actual))
+        self.assertNotIn("PRIVATE_SERIAL", str(actual))
+        self.assertNotIn("PRIVATE_DEVICE_ID", str(actual))
 
     def test_outside_date_and_missing_produced_quantity_remain_empty(self):
         actual = mod.summarize_production_candidates([{
