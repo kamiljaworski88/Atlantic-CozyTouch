@@ -18,7 +18,8 @@ MODE_STAMP = int(datetime(2026, 10, 25, 7, tzinfo=timezone.utc).timestamp())
 
 
 def sample(moment, energy_co=10000, energy_cwu=3000, flow=20, supply=34, ret=29.5, mode="CO",
-           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=None):
+           flow_age=0, return_age=0, electric_age=0, separate=False, mode_age=None,
+           supply_age=0):
     ts = int(moment.timestamp())
     interface = {
         "id": "private_interface", "reported_capability_ids": [57, 59, 91, 112],
@@ -33,7 +34,7 @@ def sample(moment, energy_co=10000, energy_cwu=3000, flow=20, supply=34, ret=29.
         "id": "private_generator" if separate else "private_interface",
         "reported_capability_ids": [109, 116],
         "values": {109: supply, 116: ret},
-        "updated_at": {109: ts, 116: ts - return_age},
+        "updated_at": {109: ts - supply_age, 116: ts - return_age},
     }
     if separate:
         return [interface, generator]
@@ -48,6 +49,74 @@ class TestHydraulicCop(unittest.TestCase):
     def setUp(self):
         self.monitor = mod.HydraulicCopEstimator()
         self.t = datetime(2026, 10, 25, 8, 0, tzinfo=timezone.utc)
+
+    def test_stable_vendor_temperature_last_change_can_be_experimental(self):
+        estimator = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        # Independent time of last value change; both temperatures are > 1h old,
+        # yet both are returned with a successful latest cloud snapshot.
+        estimator.ingest(sample(
+            self.t, separate=True, supply_age=4360, return_age=4658
+        ), self.t)
+        self.assertEqual(estimator.metrics["status"], "zbieranie_pierwszej_probki")
+        later = self.t + timedelta(minutes=5)
+        estimator.ingest(sample(
+            later, energy_co=10200, separate=True,
+            supply_age=4660, return_age=4958
+        ), later)
+        self.assertEqual(
+            estimator.metrics["status"], "szacunek_eksperymentalny_stare_temperatury"
+        )
+        self.assertEqual(estimator.metrics["cop"], 2.62)
+        self.assertFalse(estimator.metrics["cop_certified"])
+        self.assertEqual(
+            estimator.metrics["temperature_evidence"],
+            "stare_znaczniki_zmian_niska_pewnosc",
+        )
+
+    def test_stale_electric_counter_not_accepted_with_old_temperatures(self):
+        estimator = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        estimator.ingest(sample(
+            self.t, separate=True, supply_age=4360, return_age=4658,
+            electric_age=1075,
+        ), self.t)
+        self.assertEqual(estimator.metrics["status"], "odczyt_licznika_niespojny")
+        self.assertIsNone(estimator.metrics["cop"])
+
+    def test_older_than_two_hours_is_rejected(self):
+        estimator = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        estimator.ingest(sample(
+            self.t, separate=True, supply_age=8000, return_age=8250,
+        ), self.t)
+        self.assertEqual(estimator.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
+        self.assertIsNone(estimator.metrics["cop"])
+
+    def test_stable_temperature_fallback_needs_user_opt_in(self):
+        self.monitor.ingest(sample(
+            self.t, supply_age=4360, return_age=4658
+        ), self.t)
+        self.assertEqual(self.monitor.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
+
+    def test_stable_temperature_fallback_rejects_divergent_pair(self):
+        estimator = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        estimator.ingest(sample(
+            self.t, separate=True, supply_age=4300, return_age=5150
+        ), self.t)
+        self.assertEqual(estimator.metrics["status"], "niespojne_czasy_probek")
+
+    def test_stale_temperatures_must_not_change_across_poll(self):
+        estimator = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        estimator.ingest(sample(
+            self.t, separate=True, supply_age=4360, return_age=4658
+        ), self.t)
+        later = self.t + timedelta(minutes=5)
+        estimator.ingest(sample(
+            later, energy_co=10200, supply=35, separate=True,
+            supply_age=4660, return_age=4958
+        ), later)
+        self.assertEqual(
+            estimator.metrics["status"], "ponowna_walidacja_stalych_temperatur"
+        )
+        self.assertIsNone(estimator.metrics["cop"])
 
     def test_valid_interval_yields_explicitly_experimental_cop(self):
         self.monitor.ingest(sample(self.t), self.t)

@@ -14,6 +14,7 @@ HEAT_FACTOR = 4.186 / 60.0  # Approximation for pure water, kW/(l/min*K).
 MAX_SENSOR_AGE_S = 900
 MAX_SNAPSHOT_SKEW_S = 180
 MAX_CROSS_DEVICE_SKEW_S = 600  # Explicit opt-in accepts slower cloud joins.
+MAX_STABLE_TEMPERATURE_AGE_S = 7200  # Low-trust assumption; NOT a fresh sample.
 MAX_INTERVAL_S = 1200
 MIN_INTERVAL_S = 120
 LAST_GOOD_TTL_S = 12 * 3600
@@ -29,13 +30,14 @@ def _number(value: object) -> float | None:
         return None
 
 
-def _timestamp(device: dict, capability: int, now: datetime) -> int | None:
+def _timestamp(device: dict, capability: int, now: datetime,
+               max_age_seconds: int = MAX_SENSOR_AGE_S) -> int | None:
     """Check a measurement's vendor timestamp for realistic recent activity."""
     ts = device.get("updated_at", {}).get(capability)
     if type(ts) is not int:
         return None
     age = now.timestamp() - ts
-    return ts if -60 <= age <= MAX_SENSOR_AGE_S else None
+    return ts if -60 <= age <= max_age_seconds else None
 
 
 def _age_seconds(device: dict, capability: int, now: datetime) -> int | None:
@@ -65,8 +67,9 @@ class HydraulicCopEstimator:
         if type(allow_unique_cross_device) is not bool:
             raise ValueError("Cross-device experimental COP must be a boolean")
         self.allow_unique_cross_device = allow_unique_cross_device
-        # device, circuit, raw Wh, vendor Wh timestamp, thermal kW, mode timestamp
-        self._baseline: tuple[str, str, float, int, float, int | None] | None = None
+        # device, circuit, raw Wh, Wh timestamp, thermal kW, mode timestamp,
+        # initial supply and return temperatures to detect inconsistent history.
+        self._baseline: tuple[str, str, float, int, float, int | None, float, float] | None = None
         self._last_good: tuple[float, datetime] | None = None
         self.metrics: dict[str, object] = {}
         self.invalidate()
@@ -86,6 +89,7 @@ class HydraulicCopEstimator:
             "circuit": None, "topology": "nieustalona",
             "last_cop": last_cop, "last_cop_at": last_at,
             "cop_certified": False,
+            "temperature_evidence": "nie_sprawdzono",
         }
 
     def invalidate(self) -> None:
@@ -139,12 +143,20 @@ class HydraulicCopEstimator:
         if type(mode_ts) is not int:
             mode_ts = None
 
-        timestamps = [
-            _timestamp(interface, 112, now),
-            _timestamp(generator, 109, now),
-            _timestamp(generator, 116, now),
-        ]
-        if any(ts is None for ts in timestamps):
+        # The API may keep modificationDate unchanged when temperature
+        # readings do not change. This is NOT evidence of a fresh measurement.
+        # Only the explicit experimental cross-device opt-in may inspect
+        # temperature values with older last-change timestamps (up to 2 h).
+        # Fresh flow AND fresh electrical counter are still mandatory.
+        older_temperature_allowed = self.allow_unique_cross_device and not paired
+        temperature_age_limit = (
+            MAX_STABLE_TEMPERATURE_AGE_S
+            if older_temperature_allowed else MAX_SENSOR_AGE_S
+        )
+        flow_ts = _timestamp(interface, 112, now)
+        supply_ts = _timestamp(generator, 109, now, temperature_age_limit)
+        return_ts = _timestamp(generator, 116, now, temperature_age_limit)
+        if any(ts is None for ts in (flow_ts, supply_ts, return_ts)):
             self._baseline = None
             self.metrics["status"] = "nieaktualne_pomiary_hydrauliczne"
             return
@@ -153,8 +165,28 @@ class HydraulicCopEstimator:
             self._baseline = None
             self.metrics["status"] = "odczyt_licznika_niespojny"
             return
-        limit = MAX_SNAPSHOT_SKEW_S if paired else MAX_CROSS_DEVICE_SKEW_S
-        if max([*timestamps, electric_ts]) - min([*timestamps, electric_ts]) > limit:
+
+        late_temperatures = any(
+            now.timestamp() - ts > MAX_SENSOR_AGE_S
+            for ts in (supply_ts, return_ts)
+        )
+        if late_temperatures:
+            self.metrics["temperature_evidence"] = "stare_znaczniki_zmian_niska_pewnosc"
+            # Independently require matching ages of temperature pair and
+            # matching live electrical/flow timestamps. Never mix arbitrary
+            # 2 h old power readings with live energy consumption.
+            incompatible = (
+                abs(supply_ts - return_ts) > MAX_CROSS_DEVICE_SKEW_S
+                or abs(flow_ts - electric_ts) > MAX_CROSS_DEVICE_SKEW_S
+            )
+        else:
+            self.metrics["temperature_evidence"] = "znaczniki_do_15_minut"
+            limit = MAX_SNAPSHOT_SKEW_S if paired else MAX_CROSS_DEVICE_SKEW_S
+            incompatible = (
+                max(flow_ts, supply_ts, return_ts, electric_ts)
+                - min(flow_ts, supply_ts, return_ts, electric_ts) > limit
+            )
+        if incompatible:
             self._baseline = None
             self.metrics["status"] = "niespojne_czasy_probek"
             return
@@ -198,15 +230,21 @@ class HydraulicCopEstimator:
         key = str(interface["id"])
         baseline = self._baseline
         if baseline is None or (baseline[0], baseline[1]) != (key, circuit):
-            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts)
+            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts, supply, ret)
             self.metrics["status"] = "zbieranie_pierwszej_probki"
             return
 
-        previous_energy, previous_ts, previous_thermal_kw, previous_mode_ts = baseline[2:]
+        previous_energy, previous_ts, previous_thermal_kw, previous_mode_ts, previous_supply, previous_ret = baseline[2:]
         if (previous_mode_ts is not None and mode_ts is not None
                 and mode_ts != previous_mode_ts):
             self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts)
             self.metrics["status"] = "zmiana_trybu_pracy"
+            return
+        # The weaker assumption is only usable if both temperature values
+        # remain identical across at least two successfully polled snapshots.
+        if late_temperatures and (supply != previous_supply or ret != previous_ret):
+            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts, supply, ret)
+            self.metrics["status"] = "ponowna_walidacja_stalych_temperatur"
             return
         elapsed = electric_ts - previous_ts
         delta_wh = raw - previous_energy
@@ -240,6 +278,8 @@ class HydraulicCopEstimator:
         self.metrics["last_cop"] = good
         self.metrics["last_cop_at"] = now.isoformat()
         self.metrics["status"] = (
-            "szacunek_eksperymentalny_miedzy_modulami"
+            "szacunek_eksperymentalny_stare_temperatury"
+            if late_temperatures
+            else "szacunek_eksperymentalny_miedzy_modulami"
             if not paired else "szacunek_diagnostyczny"
         )
