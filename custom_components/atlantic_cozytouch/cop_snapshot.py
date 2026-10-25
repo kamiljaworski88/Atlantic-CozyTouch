@@ -211,6 +211,15 @@ class HydraulicCopEstimator:
         if any(d.get("values", {}).get(64) is True for d in devices):
             self._reject("grzalka_cwu_aktywna_niepelny_bilans_pradu")
             return
+        # Explicit electrical resistance / backup power is not proven to be
+        # included in ID57/59; refuse hydraulic COP rather than make it look
+        # artificially efficient. The capabilities may be absent on a model.
+        if any(
+            (_num(d.get("values", {}).get(cap)) or 0) > 0
+            for d in devices for cap in (8, 9, 11)
+        ):
+            self._reject("grzalka_wspomagajaca_aktywna_niepelny_bilans")
+            return
         # An explicit compressor OFF signal overrides hydraulic speculation;
         # unknown compressor states are allowed but reduce confidence.
         compressor = [
