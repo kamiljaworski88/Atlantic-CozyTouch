@@ -56,4 +56,46 @@ jobs:
           assert data["type"] == "vertical-stack"
           assert len(data["cards"]) >= 7
           print("OK dashboard YAML")
+
+          # Exercise actual entity registration (not only module imports).
+          import asyncio
+          from custom_components.atlantic_cozytouch.const import DOMAIN
+          from custom_components.atlantic_cozytouch import sensor as sen, binary_sensor as bin_sen
+          class FakeCoordinator:
+              data = [{
+                  "id": "test_heatpump", "name": "Alfea Extensa S",
+                  "values": {91: "CO", 112: 16.33},
+                  "reported_capability_ids": [91, 112],
+                  "updated_at": {},
+              }]
+              last_update_success = True
+              def async_add_listener(self, callback):
+                  return lambda: None
+          class FakeEntry:
+              entry_id = "smoke"
+              def async_on_unload(self, callback):
+                  pass
+          class FakeHass:
+              data = {DOMAIN: {"smoke": FakeCoordinator()}}
+          async def check_registration():
+              hass, entry = FakeHass(), FakeEntry()
+              sensors, binaries = [], []
+              await sen.async_setup_entry(hass, entry, sensors.extend)
+              await bin_sen.async_setup_entry(hass, entry, binaries.extend)
+              names = {e._attr_name for e in sensors}
+              for name in (
+                  "Uruchomienia sprężarki", "Czas pracy sprężarki",
+                  "Modulacja sprężarki", "Czas pracy sprężarki — godziny",
+                  "Średni czas pracy sprężarki na start",
+              ):
+                  assert name in names, f"Missing registered sensor: {name}"
+              compressor = next(e for e in binaries if e._attr_name == "Sprężarka pracuje")
+              assert compressor._attr_unique_id == "atlantic_cozytouch_test_heatpump_51"
+              assert compressor.is_on is None
+              assert all(e.native_value is None for e in sensors if e._attr_name in (
+                  "Uruchomienia sprężarki", "Czas pracy sprężarki",
+                  "Modulacja sprężarki", "Czas pracy sprężarki — godziny",
+              ))
+              print("OK optional compressor entities registered with unknown state")
+          asyncio.run(check_registration())
           PY
