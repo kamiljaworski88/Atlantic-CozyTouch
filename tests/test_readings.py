@@ -107,6 +107,15 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(module.normalize_value(99, 0), False)
         self.assertIsNone(module.normalize_value(99, "private text"))
 
+    def test_heater_8_9_11_remain_raw_not_false_3000_kw(self):
+        for cap in (8, 9, 11):
+            self.assertEqual(module.normalize_value(cap, "3000"), 3000.0)
+            spec = module.CAPABILITIES[cap]
+            self.assertIsNone(spec.unit, "Raw Atlantic 3000 must NOT say kW")
+            self.assertFalse(spec.publish_statistics)
+            self.assertTrue(spec.diagnostic)
+            self.assertIn("surowa", spec.title)
+
     def test_energy_probe_is_unscaled_and_has_no_statistics(self):
         for cap in (57, 59, 60):
             self.assertEqual(module.normalize_value(cap, "12345.6"), 12345.6)
