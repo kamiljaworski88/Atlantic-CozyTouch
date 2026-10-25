@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.10 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.11 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.11 — COP eksperymentalny przy stabilnych temperaturach w Atlantic
+
+- Dane terenowe pompy: przepływ ostatnio zmieniony ~179 s temu, temperatura zasilania 4360 s, powrotu 4658 s, energia elektryczna 1075 s. W v0.5.10 **każdy** znacznik `modificationDate` musiał mieć mniej niż 900 s, co zawsze blokowało próbę COP dla stabilnych temperatur.
+- W **świadomie włączonym trybie eksperymentalnym** oraz wyłącznie dla jedynej pary modułów dopuszczamy temperatury ze znacznikiem zmiany do **2 h**. To nie jest potwierdzenie ich aktualności; wynik ma specjalny status `szacunek_eksperymentalny_stare_temperatury` oraz atrybut `wiarygodnosc_temperatur: stare_znaczniki_zmian_niska_pewnosc`.
+- Dodatkowe zabezpieczenia: dwa kolejne skuteczne odczyty ze **stałymi wartościami temperatur**, znaczniki obu temperatur oddalone maksymalnie o 600 s; **przepływ i licznik energii nadal muszą być świeże (≤ 15 min)** i między sobą zsynchronizowane (≤ 600 s), a licznik musi wykazać realny przyrost w przedziale 2–20 min. Tylko dodatnia różnica temperatur ≥ 1°C może wywołać COP. Dalsze warunki i limity jak wcześniej.
+- Przy nieaktualnym liczniku, braku wzrostu energii albo niegrzejącej pompie wynik nadal będzie **unknown**. Nie fałszujemy czasu producenta i nie prezentujemy starego COP jako bieżącego.
+- Bez nowych endpointów, danych osobowych, sterowania pompą ani pośredników. Nie jest to certyfikowany pomiar COP, miesięczny COP, ani wielkość do rozliczeń energii.
+- To **eksperyment oparty na założeniu**, że wielokrotnie odczytana ta sama temperatura mimo starego `modificationDate` może oznaczać stabilny stan pracy, a nie zerwaną telemetrię. Testy na sprzęcie nadal konieczne.
 
 ## v0.5.10 — szacunkowy COP po zgodzie na połączenie dwóch modułów
 
