@@ -24,15 +24,12 @@ from .heater_evidence import assess_heaters
 from .cop_window import ObservedElectricWindow
 
 HEAT_FACTOR = 4.186 / 60.0   # water, kW / (L/min * Kelvin)
-WH_PER_RAW = 1.0             # candidate vendor 0.001 kWh per raw increment
 MAX_LIVE_AGE_S = 900
 # A cumulative meter can legitimately keep last-change time through extended
 # inactivity. Only the *new*, positive increment must have a recent stamp.
 MAX_METER_LAST_CHANGE_S = 366 * 86_400
 MAX_TEMP_LAST_CHANGE_S = 43_200  # 12h *only* behind explicit opt-in
 MAX_TEMP_PAIR_SKEW = 600
-MIN_INTERVAL_S = 120
-MAX_INTERVAL_S = 1200
 MIN_HEATING_DT_K = 0.75       # low-trust territory below 1.5K
 MAX_HEATING_DT_K = 25
 # Last accepted COP is a *historical* reading; no TTL hides it.
@@ -107,8 +104,6 @@ class HydraulicCopEstimator:
         self.accumulator = CopEnergyAccumulator()
         self.last_cops = LastCopMemory()
         self.window = ObservedElectricWindow()
-        self._baseline: _Sample | None = None
-        self._last_good: tuple[float, datetime] | None = None
         self.metrics: dict[str, object] = {}
         self.invalidate()
 
@@ -139,7 +134,6 @@ class HydraulicCopEstimator:
         # Keep last accepted results by circuit independently from any future
         # failed sample, mode transition or Atlantic API outage.
         self.last_cops.record(circuit, value, at, quality, source)
-        self._last_good = (value, at)
         self.metrics["cop"] = value
         self.metrics["live_cop"] = value
         self.metrics["last_cop"] = value
@@ -212,13 +206,11 @@ class HydraulicCopEstimator:
         }
 
     def invalidate(self) -> None:
-        self._baseline = None
         self.window.reset()
         self.metrics = self._empty()
         self.metrics["status"] = "brak_ciaglosci_odczytow"
 
     def _reject(self, code: str) -> None:
-        self._baseline = None
         self.window.reset()
         self.metrics["status"] = code
         self.metrics["electric_window_diagnostics"] = self.window.diagnostics()
@@ -369,112 +361,36 @@ class HydraulicCopEstimator:
             supply_stamp=sup_ts, return_stamp=ret_ts, flow_stamp=flow_ts,
             stale_temperature=old_temp,
         )
-        # Longer electricity increments are evaluated only from fully
-        # observed 3-minute hydraulic snapshots between *two witnessed*
-        # changes of this cumulative meter. First witnessed increment only
-        # establishes an anchor; it can never create a fabricated historic COP.
-        long_window = self.window.ingest(current)
-        self.metrics["electric_window_diagnostics"] = self.window.diagnostics()
-        if long_window is not None:
-            if self.accumulator.add(
-                circuit, long_window.heat_kwh,
-                long_window.electric_kwh, long_window.seconds,
-            ):
-                self.metrics["accumulated"] = self.accumulator.snapshot()
-                self.metrics["electrical_kw"] = round(
-                    long_window.electric_kwh * 3600 / long_window.seconds, 3
-                )
-                estimated = round(long_window.heat_kwh / long_window.electric_kwh, 2)
-                self._accepted(estimated, now, circuit, "niska", "pelne_okno_energii")
-                self.metrics["confidence"] = "niska"
-                self.metrics["status"] = "szacunek_niska_pewnosc_pelne_okno_licznika"
-            else:
-                self.metrics["status"] = "okno_energii_odrzucone_przez_akumulator"
-            self._baseline = current
-            return
-        prior = self._baseline
-        self._baseline = current
-        if prior is None or prior.source_key != current.source_key or prior.circuit != circuit:
-            self.metrics["status"] = (
-                "punkt_startowy_starego_licznika_czekamy_na_przyrost"
-                if electricity_age > MAX_LIVE_AGE_S
-                else "zbieranie_pierwszej_probki"
+        # A short 3-6min "instant" ratio from one raw ID57/59 step is NOT
+        # temporally aligned with the heat integral; we observed false COP=9.44
+        # from 0.491kWh heat / 0.052kWh of late/batched electricity.
+        #
+        # Only meter-to-meter windows starting and ending at two WITNESSED
+        # counter changes can write to the energy accumulator. Every 3min
+        # hydraulic segment inside the 12-60min window must be observed.
+        # FIRST change anchors; no historical inference/backfill.
+        candidate = self.window.ingest(current)
+        window_info = self.window.diagnostics()
+        self.metrics["electric_window_diagnostics"] = window_info
+        meter_info = self.metrics.get("electric_meter_diagnostics")
+        if isinstance(meter_info, dict):
+            meter_info["counter_increment_seen"] = (
+                window_info["przyrost_licznika_w_biezacym_odczycie"]
             )
-            return
-        if (prior.mode_stamp is not None and mode_stamp is not None
-                and mode_stamp != prior.mode_stamp):
-            self.metrics["status"] = "zmiana_trybu_pracy"
-            return
-        seconds = round((now - prior.seen).total_seconds())
-        if not MIN_INTERVAL_S <= seconds <= MAX_INTERVAL_S:
-            self.metrics["status"] = "przerwa_lub_reset_probki"
-            return
-        if elec_ts < prior.electric_stamp or flow_ts < prior.flow_stamp:
-            self.metrics["status"] = "cofniecie_znacznikow"
-            return
-        delta_raw = raw - prior.electric_raw
-        if delta_raw < 0:
-            self.metrics["status"] = "reset_licznika"
-            return
-        if delta_raw == 0:
-            # Never manufacture electricity from a stationary counter. Keep
-            # the original baseline only within MAX_INTERVAL_S; stale counters
-            # are normal when the pump is idle or history updates rarely.
-            self._baseline = prior
-            self.metrics["status"] = (
-                "licznik_bez_przyrostu_ponad_15_minut"
-                if electricity_age > MAX_LIVE_AGE_S
-                else "oczekiwanie_na_przyrost_energii"
-            )
-            return
-        self.metrics["electric_meter_diagnostics"]["counter_increment_seen"] = True
-        if elec_ts <= prior.electric_stamp:
-            self.metrics["status"] = "zmiana_pradu_bez_nowego_znacznika"
-            return
-        # Even a numeric increase must not be attributed to the sampled
-        # interval when vendor change metadata says it happened long ago
-        # or *before* the baseline observation.
-        if (electricity_age > MAX_LIVE_AGE_S
-                or elec_ts < prior.seen.timestamp() - 60):
-            self.metrics["status"] = "przyrost_pradu_z_nieaktualnym_znacznikiem"
+        if candidate is None:
+            self.metrics["status"] = "okno_energii_" + self.window.last_reason
             return
 
-        # An old *unchanged* pair of temperatures is a weak reconstruction,
-        # never a newly measured water reading. Do not bridge a temperature
-        # change whose last-change stamp is itself old/contradictory.
-        if (prior.supply_stamp != sup_ts or prior.return_stamp != ret_ts):
-            if old_temp or prior.stale_temperature:
-                self.metrics["status"] = "zmiana_temperatur_w_niepewnym_przedziale"
-                return
-        if (old_temp and (supply != prior.supply or ret != prior.ret)
-                or not old_temp and prior.stale_temperature):
-            self.metrics["status"] = "zmiana_jakosci_pomiarow"
-            return
-
-        electricity_kwh = delta_raw * WH_PER_RAW / 1000
-        if not 0 < electricity_kwh < 5:
-            self.metrics["status"] = "przyrost_pradu_poza_zakresem"
-            return
-        electrical_kw = electricity_kwh * 3600 / seconds
-        self.metrics["electrical_kw"] = round(electrical_kw, 3)
-        if not 0.1 < electrical_kw < 15:
-            self.metrics["status"] = "moc_elektryczna_poza_zakresem"
-            return
-        thermal_kwh = (prior.thermal_kw + thermal) / 2 * seconds / 3600
-        estimated = thermal_kwh / electricity_kwh
-        if not 0.5 <= estimated <= 10:
-            self.metrics["status"] = "cop_poza_zakresem"
-            return
-        if not self.accumulator.add(circuit, thermal_kwh, electricity_kwh, seconds):
-            self.metrics["status"] = "odrzucony_przedzial_energii"
+        if not self.accumulator.add(
+            circuit, candidate.heat_kwh, candidate.electric_kwh, candidate.seconds,
+        ):
+            self.metrics["status"] = "okno_energii_odrzucone_przez_akumulator"
             return
         self.metrics["accumulated"] = self.accumulator.snapshot()
-        result = round(estimated, 2)
-        self._accepted(result, now, circuit, self.metrics["confidence"], "krotki_przedzial")
-        self.metrics["status"] = (
-            "szacunek_niska_pewnosc_stale_temperatury"
-            if old_temp else
-            "szacunek_niska_pewnosc_mala_delta_t"
-            if self.metrics["confidence"] == "niska" else
-            "szacunek_eksperymentalny_snapshot"
+        self.metrics["electrical_kw"] = round(
+            candidate.electric_kwh * 3600 / candidate.seconds, 3
         )
+        estimated = round(candidate.heat_kwh / candidate.electric_kwh, 2)
+        self._accepted(estimated, now, circuit, "niska", "pelne_okno_energii")
+        self.metrics["confidence"] = "niska"
+        self.metrics["status"] = "szacunek_niska_pewnosc_pelne_okno_licznika"

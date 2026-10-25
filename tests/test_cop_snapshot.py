@@ -1,4 +1,8 @@
-"""Offline regression tests of the snapshot COP estimator (NO network calls)."""
+"""Offline regression tests: real COP needs two observed meter changes.
+
+No HTTP; fake Atlantic device IDs never reach public HA diagnostic attributes.
+Old six-minute COP=9.44 from 0.491kWh/0.052kWh MUST NOT be accepted.
+"""
 from __future__ import annotations
 
 from datetime import datetime, timedelta, timezone
@@ -19,17 +23,18 @@ mod = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
 
-
-MODE_STAMP = int(datetime(2026, 10, 25, 7, tzinfo=timezone.utc).timestamp())
+NOW = datetime(2026, 10, 25, 10, tzinfo=timezone.utc)
+MODE_STAMP = int(NOW.timestamp()) - 3600
 
 
 def capture(when, *, co=10000, cwu=4000, circuit="CO",
             flow=17.16, supply=25.83, ret=24.89,
             flow_age=25, electric_age=25, supply_age=11037, return_age=11335,
-            separate=True, mode_age=None, compressor=None, heater=False):
+            separate=True, mode_age=None, compressor=None, heater=False,
+            auxiliary_raw=None):
     ts = int(when.timestamp())
     interface = {
-        "id": "interface-private",
+        "id": "private-interface",
         "reported_capability_ids": [57, 59, 91, 112],
         "values": {57: co, 59: cwu, 91: circuit, 112: flow},
         "updated_at": {
@@ -39,7 +44,7 @@ def capture(when, *, co=10000, cwu=4000, circuit="CO",
         },
     }
     generator = {
-        "id": "generator-private" if separate else "interface-private",
+        "id": "private-generator" if separate else "private-interface",
         "reported_capability_ids": [109, 116],
         "values": {109: supply, 116: ret},
         "updated_at": {109: ts - supply_age, 116: ts - return_age},
@@ -50,10 +55,12 @@ def capture(when, *, co=10000, cwu=4000, circuit="CO",
     if heater:
         generator["reported_capability_ids"].append(64)
         generator["values"][64] = True
+    if auxiliary_raw is not None:
+        generator["reported_capability_ids"].append(8)
+        generator["values"][8] = auxiliary_raw
     if separate:
         return [interface, generator]
-    for key in ("reported_capability_ids",):
-        interface[key].extend(generator[key])
+    interface["reported_capability_ids"].extend(generator["reported_capability_ids"])
     interface["values"].update(generator["values"])
     interface["updated_at"].update(generator["updated_at"])
     return [interface]
@@ -61,416 +68,255 @@ def capture(when, *, co=10000, cwu=4000, circuit="CO",
 
 class SnapshotEstimatorTest(unittest.TestCase):
     def setUp(self):
-        self.t = datetime(2026, 10, 25, 10, tzinfo=timezone.utc)
+        self.t = NOW
         self.est = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
 
-    def test_user_3_hour_stamps_and_point_94_delta_can_yield_low_confidence_cop(self):
+    def observe(self, minute, *, co=10000, cwu=4000, meter_min=-10,
+                circuit="CO", **kwargs):
+        when = self.t + timedelta(minutes=minute)
+        # Device counter stamp changes only on a real meter jump.
+        age = int((minute - meter_min) * 60) + 15
+        args = dict(
+            co=co, cwu=cwu, circuit=circuit, electric_age=age,
+            supply_age=11037 + minute * 60,
+            return_age=11335 + minute * 60,
+        )
+        args.update(kwargs)
+        self.est.ingest(capture(when, **args), when)
+
+    def run_valid_co_window(self):
+        self.observe(0)
+        self.observe(3, co=10100, meter_min=3)
+        for minute in (6, 9, 12, 15):
+            self.observe(minute, co=10100, meter_min=3)
+        self.observe(18, co=10350, meter_min=18)
+
+    def test_initial_short_bucket_not_a_real_cop(self):
         self.est.ingest(capture(self.t), self.t)
-        self.assertEqual(self.est.metrics["status"], "zbieranie_pierwszej_probki")
-        self.assertAlmostEqual(self.est.metrics["thermal_kw"], 1.126, places=2)
-        later = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(later, co=10095, supply_age=11337,
-                                return_age=11635), later)
-        x = self.est.metrics
-        self.assertEqual(x["status"], "szacunek_niska_pewnosc_stale_temperatury")
-        self.assertEqual(x["confidence"], "niska")
-        self.assertTrue("stale_wartosci" in x["temperature_evidence"])
-        self.assertIsNotNone(x["cop"])
-        self.assertEqual(x["cop_certified"], False)
-        self.assertEqual(self.est.accumulated_intervals, 1)
-        self.assertEqual(x["accumulated"]["CO"]["intervals"], 1)
-
-    def test_consecutive_new_snapshots_accumulate_energy_ratio_not_mean_cop(self):
-        self.est.ingest(capture(self.t), self.t)
-        t1 = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(t1, co=10095, supply_age=11337, return_age=11635), t1)
-        t2 = t1 + timedelta(minutes=5)
-        self.est.ingest(capture(t2, co=10195, supply_age=11637, return_age=11935), t2)
-        snap = self.est.accumulator.snapshot()
-        self.assertEqual(snap["total"]["intervals"], 2)
-        self.assertAlmostEqual(snap["CO"]["electric_kwh"], 0.195, places=3)
-        self.assertAlmostEqual(snap["CO"]["heat_kwh"], 2 * 1.126 * 5 / 60, places=3)
-        self.assertIsNotNone(snap["total"]["cop"])
-
-    def test_opt_in_required_for_cross_device(self):
-        est = mod.HydraulicCopEstimator()
-        est.ingest(capture(self.t), self.t)
-        self.assertEqual(est.metrics["status"], "niepotwierdzone_powiazanie_obiegu")
-        self.assertIsNone(est.metrics["cop"])
-
-    def test_same_device_without_optin_cannot_use_old_temperature(self):
-        est = mod.HydraulicCopEstimator()
-        est.ingest(capture(self.t, separate=False), self.t)
-        self.assertEqual(est.metrics["status"], "stare_znaczniki_temperatur_wymagaja_opt_in")
-
-    def test_temperature_older_than_12h_fails_closed(self):
-        self.est.ingest(capture(self.t, supply_age=45000, return_age=45300), self.t)
-        self.assertEqual(self.est.metrics["status"], "nieaktualne_pomiary_hydrauliczne")
-
-    def test_stale_electric_meter_is_baseline_only_and_old_flow_is_blocked(self):
-        self.est.ingest(capture(self.t, electric_age=1170), self.t)
-        self.assertEqual(
-            self.est.metrics["status"],
-            "punkt_startowy_starego_licznika_czekamy_na_przyrost",
-        )
-        self.assertIsNone(self.est.metrics["cop"])
-        self.assertEqual(
-            self.est.metrics["electric_meter_diagnostics"]["last_change_age_seconds"],
-            1170,
-        )
-        self.est.ingest(capture(self.t, flow_age=1500), self.t)
-        self.assertEqual(self.est.metrics["status"], "nieaktualny_przeplyw")
-
-    def test_old_counter_then_fresh_increment_can_start_new_valid_interval(self):
-        self.est.ingest(capture(self.t, electric_age=3600), self.t)
-        self.assertEqual(
-            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
-        )
-        later = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(later, co=10095, electric_age=20,
-                                supply_age=11337, return_age=11635), later)
-        self.assertEqual(self.est.accumulated_intervals, 1)
-        self.assertIsNotNone(self.est.metrics["cop"])
-        self.assertEqual(
-            self.est.metrics["electric_meter_diagnostics"]["counter_increment_seen"], True
-        )
-
-    def test_stale_meter_without_increment_never_generates_heat_or_cop(self):
-        self.est.ingest(capture(self.t, electric_age=3600), self.t)
-        later = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(later, electric_age=3900,
-                                supply_age=11337, return_age=11635), later)
-        self.assertEqual(self.est.metrics["status"], "licznik_bez_przyrostu_ponad_15_minut")
-        self.assertIsNone(self.est.metrics["cop"])
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_old_counter_increase_with_stale_vendor_time_must_not_generate_cop(self):
-        self.est.ingest(capture(self.t, electric_age=3600), self.t)
-        later = self.t + timedelta(minutes=5)
-        # Raw increases, but the vendor only reports a last-change time
-        # that precedes the first observed HA snapshot.
-        self.est.ingest(capture(later, co=10095, electric_age=1800,
-                                supply_age=11337, return_age=11635), later)
-        self.assertEqual(
-            self.est.metrics["status"], "przyrost_pradu_z_nieaktualnym_znacznikiem"
-        )
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_old_counter_does_not_spoil_fresh_hydraulic_baseline(self):
-        self.est.ingest(capture(self.t, electric_age=3600,
-                                supply_age=60, return_age=65), self.t)
-        self.assertEqual(
-            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
-        )
-        self.assertIsNone(self.est.metrics["cop"])
-
-    def test_counter_not_changed_for_month_can_still_seed_no_cop(self):
-        self.est.ingest(capture(self.t, electric_age=30*86400), self.t)
-        self.assertEqual(
-            self.est.metrics["status"], "punkt_startowy_starego_licznika_czekamy_na_przyrost"
-        )
-        self.assertIsNone(self.est.metrics["cop"])
-
-    def test_missing_timestamp_does_not_create_output(self):
-        devices = capture(self.t)
-        del devices[1]["updated_at"][116]
-        self.est.ingest(devices, self.t)
-        self.assertIsNone(self.est.metrics["cop"])
-        self.assertEqual(self.est.metrics["status"], "brak_znacznikow_zmiany_wartosci")
-
-    def test_small_delta_or_zero_flow_rejected(self):
-        self.est.ingest(capture(self.t, ret=25.25), self.t)
-        self.assertEqual(self.est.metrics["status"], "delta_t_za_mala_dla_szacowania_cop")
-        self.est.ingest(capture(self.t, flow=0), self.t)
-        self.assertEqual(self.est.metrics["status"], "przeplyw_lub_licznik_poza_zakresem")
-
-    def test_heater_on_and_compressor_explicit_off_reset(self):
-        self.est.ingest(capture(self.t, heater=True), self.t)
-        self.assertEqual(self.est.metrics["status"], "grzalka_cwu_aktywna_niepelny_bilans_pradu")
-        self.est.ingest(capture(self.t, compressor=False), self.t)
-        self.assertEqual(self.est.metrics["status"], "sprezarka_wylaczona")
-
-    def test_positive_auxiliary_heater_power_blocks_incomplete_energy_balance(self):
-        devices = capture(self.t)
-        devices[1]["reported_capability_ids"].append(8)
-        devices[1]["values"][8] = 3.0
-        self.est.ingest(devices, self.t)
-        self.assertEqual(
-            self.est.metrics["status"], "grzalka_wspomagajaca_moc_dodatnia_w_zakresie_katalogu"
-        )
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_user_actual_id8_3000_does_not_falsely_assert_heater_on(self):
-        baseline = capture(self.t)
-        baseline[1]["reported_capability_ids"].append(8)
-        baseline[1]["values"][8] = 3000.0
-        self.est.ingest(baseline, self.t)
-        self.assertEqual(self.est.metrics["status"], "zbieranie_pierwszej_probki")
-        audit = self.est.metrics["heater_evidence"]
-        self.assertEqual(
-            audit["power_id_states"]["8"],
-            "poza_zakresem_katalogu_skala_nieznana",
-        )
-        self.assertFalse(audit["heater_off_confirmed"])
-        self.assertTrue(audit["uncertain"])
-        self.assertEqual(self.est.metrics["confidence"], "niska")
-        later = self.t + timedelta(minutes=5)
-        second = capture(later, co=10095, supply_age=11337, return_age=11635)
-        second[1]["reported_capability_ids"].append(8)
-        second[1]["values"][8] = 3000.0
-        self.est.ingest(second, later)
-        self.assertEqual(self.est.accumulated_intervals, 1)
-        self.assertIsNotNone(self.est.metrics["cop"])
-        self.assertEqual(self.est.metrics["confidence"], "niska")
-        self.assertFalse(self.est.metrics["cop_certified"])
-
-    def test_confirmed_dhw_heater_still_blocks_even_if_id8_unscaled(self):
-        devices = capture(self.t, heater=True)
-        devices[1]["reported_capability_ids"].append(8)
-        devices[1]["values"][8] = 3000.0
-        self.est.ingest(devices, self.t)
-        self.assertEqual(
-            self.est.metrics["status"], "grzalka_cwu_aktywna_niepelny_bilans_pradu"
-        )
-        self.assertIsNotNone(self.est.metrics["delta_t_k"])
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_no_delta_does_not_invent_consumption_and_can_bridge_short_stall(self):
-        self.est.ingest(capture(self.t), self.t)
-        middle = self.t + timedelta(minutes=3)
-        self.est.ingest(capture(middle, supply_age=11217, return_age=11515), middle)
-        self.assertEqual(self.est.metrics["status"], "oczekiwanie_na_przyrost_energii")
-        self.assertIsNone(self.est.metrics["cop"])
-        end = self.t + timedelta(minutes=6)
-        self.est.ingest(capture(end, co=10110, supply_age=11397, return_age=11695), end)
-        self.assertEqual(self.est.accumulated_intervals, 1)
-
-    def test_large_gap_after_poll_outage_not_integrated(self):
-        self.est.ingest(capture(self.t), self.t)
-        end = self.t + timedelta(minutes=21)
-        self.est.ingest(capture(end, co=10300, supply_age=12297,
-                                return_age=12595), end)
-        self.assertEqual(self.est.accumulated_intervals, 0)
-        self.assertEqual(self.est.metrics["status"], "przerwa_lub_reset_probki")
-
-    def test_transition_same_mode_stamp_changed_is_rejected(self):
-        self.est.ingest(capture(self.t, mode_age=3000), self.t)
-        end = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(end, co=10100, mode_age=10,
-                                supply_age=11337, return_age=11635), end)
-        self.assertEqual(self.est.metrics["status"], "zmiana_trybu_pracy")
-
-    def test_counter_reset_and_clock_rollback(self):
-        self.est.ingest(capture(self.t), self.t)
-        end = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(end, co=9000, supply_age=11337, return_age=11635), end)
-        self.assertEqual(self.est.metrics["status"], "reset_licznika")
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_unchanged_electric_change_stamp_not_accepted(self):
-        self.est.ingest(capture(self.t), self.t)
-        end = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(end, co=10095, electric_age=325,
-                                supply_age=11337, return_age=11635), end)
-        self.assertEqual(self.est.metrics["status"], "zmiana_pradu_bez_nowego_znacznika")
-
-    def test_temperature_changes_with_old_stamp_are_not_integrated(self):
-        self.est.ingest(capture(self.t), self.t)
-        end = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(end, co=10095, supply=30,
-                                supply_age=11337, return_age=11635), end)
-        self.assertEqual(self.est.metrics["status"], "zmiana_jakosci_pomiarow")
-        self.assertEqual(self.est.accumulated_intervals, 0)
-
-    def test_cwu_is_separate_and_no_doubling_of_co_buckets(self):
-        self.est.ingest(capture(self.t), self.t)
-        end = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(end, co=10095, supply_age=11337,
-                                return_age=11635), end)
-        co = self.est.accumulator.snapshot()["CO"]["intervals"]
-        switch = end + timedelta(minutes=3)
-        self.est.ingest(capture(switch, circuit="CWU", mode_age=0,
-                                supply_age=11517, return_age=11815), switch)
-        self.assertEqual(self.est.metrics["status"], "zbieranie_pierwszej_probki")
-        end2 = switch + timedelta(minutes=5)
-        self.est.ingest(capture(end2, circuit="CWU", cwu=4095,
-                                mode_age=300, supply_age=11817,
-                                return_age=12115), end2)
-        total = self.est.accumulator.snapshot()
-        self.assertEqual(total["CO"]["intervals"], co)
-        self.assertEqual(total["CWU"]["intervals"], 1)
-        self.assertEqual(total["total"]["intervals"], co + 1)
-
-    def test_invalid_data_types_and_ambiguous_sensors(self):
-        with self.assertRaises(ValueError):
-            mod.HydraulicCopEstimator(allow_unique_cross_device="true")
-        self.est.ingest(capture(self.t) + [capture(self.t)[1]], self.t)
-        self.assertEqual(self.est.metrics["status"], "brak_jednoznacznych_zrodel")
-        self.est.ingest(capture(self.t, flow=True), self.t)
-        self.assertEqual(self.est.metrics["status"], "brak_liczbowych_pomiarow")
-
-    def test_long_observed_window_accepts_only_second_meter_jump(self):
-        # 3m HA polling, real counter changes separated by 33 minutes.
-        # First observed change at minute 3 opens a NEW window; no history
-        # before that event is included in its thermal balance.
-        self.est.ingest(capture(self.t), self.t)
-        t1 = self.t + timedelta(minutes=3)
+        when = self.t + timedelta(minutes=6)
         self.est.ingest(capture(
-            t1, co=10095, electric_age=15,
-            supply_age=11037+180, return_age=11335+180,
-        ), t1)
-        early = self.est.accumulated_intervals
-        for m in range(6, 36, 3):
-            moment = self.t + timedelta(minutes=m)
-            self.est.ingest(capture(
-                moment, co=10095, electric_age=(m-3)*60+15,
-                supply_age=11037+m*60, return_age=11335+m*60,
-            ), moment)
-        self.assertEqual(self.est.accumulated_intervals, early)
-        end = self.t + timedelta(minutes=36)
-        self.est.ingest(capture(
-            end, co=10395, electric_age=15,
-            supply_age=11037+36*60, return_age=11335+36*60,
-        ), end)
-        self.assertEqual(self.est.accumulated_intervals, early + 1)
-        self.assertEqual(
-            self.est.metrics["status"], "szacunek_niska_pewnosc_pelne_okno_licznika"
-        )
+            when, co=10052, supply_age=11037+360,
+            return_age=11335+360,
+        ), when)
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_punkt_odniesienia_po_pierwszym_skoku_licznika")
+
+    def test_two_meter_jumps_and_continuous_hydraulic_data_can_create_cop(self):
+        self.run_valid_co_window()
+        self.assertEqual(self.est.accumulated_intervals, 1)
+        self.assertEqual(self.est.metrics["status"],
+                         "szacunek_niska_pewnosc_pelne_okno_licznika")
         self.assertEqual(self.est.metrics["confidence"], "niska")
+        self.assertEqual(self.est.metrics["last_cop_source"], "pelne_okno_energii")
+        self.assertEqual(self.est.metrics["last_cop_circuit"], "CO")
         self.assertAlmostEqual(
-            self.est.metrics["electric_window_diagnostics"]["pokrycie_procent"],
-            100.0,
+            self.est.metrics["electric_window_diagnostics"]["pokrycie_procent"], 100
+        )
+        self.assertAlmostEqual(
+            self.est.accumulator.snapshot()["CO"]["electric_kwh"], 0.25
         )
         self.assertFalse(self.est.metrics["cop_certified"])
 
-    def test_long_observed_window_rejects_unphysical_51_unit_increment(self):
-        self.est.ingest(capture(self.t), self.t)
-        for m in range(3, 39, 3):
-            moment = self.t + timedelta(minutes=m)
-            raw = 10100 if m < 36 else 10151
-            last_change = 3 if m < 36 else 36
-            self.est.ingest(capture(
-                moment, co=raw,
-                electric_age=(m-last_change)*60+15,
-                supply_age=11037+m*60, return_age=11335+m*60,
-            ), moment)
+    def test_51wh_for_15min_with_approx_5kw_heat_is_rejected(self):
+        for minute in range(0, 19, 3):
+            co = 10000 if minute == 0 else 10100 if minute < 18 else 10151
+            event = -10 if minute == 0 else 3 if minute < 18 else 18
+            self.observe(
+                minute, co=co, meter_min=event,
+                supply=35.0, ret=31.0,
+            )
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertIsNone(self.est.metrics["live_cop"])
         self.assertEqual(
             self.est.metrics["electric_window_diagnostics"]["status"],
             "energia_cieplna_i_prad_fizycznie_niespojne",
         )
-        self.assertNotEqual(
-            self.est.metrics["status"], "szacunek_niska_pewnosc_pelne_okno_licznika"
-        )
 
-    def test_latest_cop_remains_visible_when_next_poll_counter_is_zero(self):
-        self.est.ingest(capture(self.t), self.t)
-        first = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(
-            first, co=10095, supply_age=11337, return_age=11635,
-        ), first)
-        result = self.est.metrics["cop"]
-        self.assertIsNotNone(result)
-        self.assertEqual(self.est.metrics["live_cop"], result)
-        self.assertFalse(self.est.metrics["cop_is_historical"])
-        assert result is not None
-        later = first + timedelta(minutes=3)
-        self.est.ingest(capture(
-            later, co=10095, electric_age=205,
-            supply_age=11517, return_age=11815,
-        ), later)
-        self.assertEqual(self.est.metrics["cop"], result)
+    def test_last_accepted_retained_without_current_increment(self):
+        self.run_valid_co_window()
+        accepted = self.est.metrics["cop"]
+        self.assertIsNotNone(accepted)
+        self.observe(21, co=10350, meter_min=18)
+        self.assertEqual(self.est.metrics["cop"], accepted)
         self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertEqual(self.est.metrics["cop_display_source"],
+                         "ostatni_zaakceptowany_przedzial")
         self.assertTrue(self.est.metrics["cop_is_historical"])
-        self.assertEqual(self.est.metrics["last_cop_co"], result)
-        self.assertEqual(self.est.metrics["last_cop_circuit"], "CO")
-        self.assertEqual(self.est.metrics["last_cop_quality"], "niska")
-        self.assertFalse(self.est.metrics["cop_certified"])
 
-    def test_old_stored_single_co_interval_is_visible_after_0_5_20_update(self):
-        self.assertTrue(self.est.accumulator.add("CO", 0.944, 0.1, 600))
+    def test_new_accepted_cop_persists_through_restart(self):
+        self.run_valid_co_window()
+        accepted = self.est.metrics["cop"]
+        saved = self.est.export_last_cops()
+        history = self.est.export_accumulated()
+        est = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
+        self.assertTrue(est.restore_accumulated(history))
+        self.assertTrue(est.restore_last_cops(saved))
+        self.assertEqual(est.metrics["cop"], accepted)
+        self.assertEqual(est.metrics["last_cop_at"],
+                         (self.t+timedelta(minutes=18)).isoformat())
+        self.assertIsNone(est.metrics["live_cop"])
+        self.assertNotIn("private", str(saved))
+
+    def test_legacy_one_interval_9_44_kept_as_clearly_labeled_fallback(self):
+        self.assertTrue(self.est.accumulator.add("CO", 0.491, 0.052, 360))
         self.est.invalidate()
-        info = self.est.metrics
-        self.assertEqual(info["cop"], 9.44)
-        self.assertIsNone(info["last_cop"])
-        self.assertIsNone(info["last_cop_at"])
-        self.assertIsNone(info["live_cop"])
-        self.assertTrue(info["cop_uses_cumulative_fallback"])
-        self.assertEqual(info["cop_display_source"],
-                         "zastepczy_cop_skumulowany_bez_daty")
-        self.assertEqual(info["cop_display_circuit"], "CO")
-        self.assertFalse(info["cop_certified"])
-
-        recovered = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
-        self.assertTrue(recovered.restore_accumulated(self.est.export_accumulated()))
-        self.assertEqual(recovered.metrics["cop"], 9.44)
-        self.assertTrue(recovered.metrics["cop_uses_cumulative_fallback"])
-        self.assertIsNone(recovered.metrics["last_cop_at"])
-
-    def test_cumulative_fallback_does_not_claim_most_recent_interval(self):
-        self.assertTrue(self.est.accumulator.add("CO", 0.4, 0.1, 600))
-        self.assertTrue(self.est.accumulator.add("CO", 0.4, 0.2, 600))
-        self.est.invalidate()
-        # Weighted ratio 2.67 does not match the last accepted interval COP=2.
-        # A visible surrogate is fine only if it says it is an aggregate.
-        self.assertAlmostEqual(self.est.metrics["cop"], 2.67)
+        self.assertAlmostEqual(self.est.metrics["cop"], 9.44)
         self.assertTrue(self.est.metrics["cop_uses_cumulative_fallback"])
-        self.assertIsNone(self.est.metrics["last_cop"])
         self.assertIsNone(self.est.metrics["last_cop_at"])
+        self.assertIsNone(self.est.metrics["live_cop"])
+        self.assertFalse(self.est.metrics["cop_certified"])
+        new_est = mod.HydraulicCopEstimator()
+        self.assertTrue(new_est.restore_accumulated(self.est.export_accumulated()))
+        self.assertEqual(new_est.metrics["cop"], 9.44)
+
+    def test_legacy_multiple_intervals_must_be_labeled_aggregate_not_last(self):
+        self.assertTrue(self.est.accumulator.add("CO", .4, .1, 600))
+        self.assertTrue(self.est.accumulator.add("CO", .4, .2, 600))
+        self.est.invalidate()
+        self.assertEqual(self.est.metrics["cop"], 2.67)
         self.assertEqual(self.est.metrics["cop_display_source"],
                          "zastepczy_cop_skumulowany_bez_daty")
+        self.assertIsNone(self.est.metrics["last_cop"])
 
-    def test_one_real_new_interval_replaces_legacy_fallback_with_dated_cop(self):
-        self.assertTrue(self.est.accumulator.add("CO", 0.944, 0.1, 600))
+    def test_legacy_fallback_is_replaced_by_witnessed_accepted_window(self):
+        self.assertTrue(self.est.accumulator.add("CO", .491, .052, 360))
         self.est.invalidate()
-        self.assertEqual(self.est.metrics["cop"], 9.44)
-        self.est.ingest(capture(self.t), self.t)
-        when = self.t + timedelta(minutes=5)
-        self.est.ingest(
-            capture(when, co=10095, supply_age=11337, return_age=11635),
-            when,
-        )
-        info = self.est.metrics
-        self.assertIsNotNone(info["live_cop"])
-        self.assertFalse(info["cop_uses_cumulative_fallback"])
-        self.assertEqual(info["cop_display_source"], "ostatni_zaakceptowany_przedzial")
-        self.assertEqual(info["last_cop_at"], when.isoformat())
-        self.assertEqual(info["last_cop_circuit"], "CO")
+        self.run_valid_co_window()
+        self.assertFalse(self.est.metrics["cop_uses_cumulative_fallback"])
+        self.assertEqual(self.est.metrics["last_cop_at"],
+                         (self.t+timedelta(minutes=18)).isoformat())
+        self.assertEqual(self.est.accumulated_intervals, 2)
 
-    def test_empty_legacy_storage_never_fabricates_cop(self):
+    def test_empty_history_is_unknown_not_invented(self):
         self.est.invalidate()
         self.assertIsNone(self.est.metrics["cop"])
-        self.assertFalse(self.est.metrics["cop_uses_cumulative_fallback"])
         self.assertEqual(self.est.metrics["cop_display_source"], "brak")
 
-    def test_latest_cop_survives_invalidate_reboot_and_rejected_samples(self):
-        self.est.ingest(capture(self.t), self.t)
-        when = self.t + timedelta(minutes=5)
-        self.est.ingest(capture(
-            when, co=10095, supply_age=11337, return_age=11635,
-        ), when)
-        record = self.est.export_last_cops()
-        accepted = self.est.metrics["cop"]
-        self.est.invalidate()
-        self.assertEqual(self.est.metrics["cop"], accepted)
-        self.assertIsNone(self.est.metrics["live_cop"])
-        self.assertEqual(self.est.metrics["status"], "brak_ciaglosci_odczytow")
-        self.est.ingest(capture(
-            when + timedelta(minutes=5), flow=0,
-        ), when + timedelta(minutes=5))
-        self.assertEqual(self.est.metrics["cop"], accepted)
-        self.assertIsNone(self.est.metrics["live_cop"])
-        restored = mod.HydraulicCopEstimator(allow_unique_cross_device=True)
-        self.assertTrue(restored.restore_last_cops(record))
-        self.assertEqual(restored.metrics["cop"], accepted)
-        self.assertEqual(restored.metrics["last_cop_co"], accepted)
-        self.assertIsNone(restored.metrics["live_cop"])
-        self.assertEqual(restored.metrics["last_cop_at"], when.isoformat())
-        self.assertNotIn("private", str(record))
+    def test_stale_meter_is_seed_not_confirmed_power_draw(self):
+        self.est.ingest(capture(self.t, electric_age=3600), self.t)
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_czekamy_na_pierwszy_zaobserwowany_skok_licznika")
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.accumulated_intervals, 0)
 
-    def test_no_private_identifiers_in_public_metrics_or_store(self):
+    def test_old_meter_without_real_increment_never_generates_cop(self):
+        self.est.ingest(capture(self.t, electric_age=3600), self.t)
+        when = self.t+timedelta(minutes=3)
+        self.est.ingest(capture(
+            when, electric_age=3780,
+            supply_age=11217, return_age=11515,
+        ), when)
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertIsNone(self.est.metrics["cop"])
+
+    def test_reset_or_invalid_vendor_last_change_blocks(self):
         self.est.ingest(capture(self.t), self.t)
-        self.assertNotIn("interface-private", str(self.est.metrics))
-        self.assertNotIn("generator-private", str(self.est.metrics))
+        when = self.t+timedelta(minutes=3)
+        self.est.ingest(capture(
+            when, co=9000, supply_age=11217, return_age=11515,
+        ), when)
+        self.assertEqual(self.est.metrics["status"], "okno_energii_reset_licznika")
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.est.ingest(capture(self.t), self.t)
+        self.est.ingest(capture(
+            when, co=10095, electric_age=210,
+            supply_age=11217, return_age=11515,
+        ), when)
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_zmiana_trybu_lub_niespojne_czujniki")
+        self.assertIsNone(self.est.metrics["cop"])
+
+    def test_opt_in_required_for_distinct_device_modules(self):
+        est = mod.HydraulicCopEstimator()
+        est.ingest(capture(self.t), self.t)
+        self.assertEqual(est.metrics["status"], "niepotwierdzone_powiazanie_obiegu")
+
+    def test_opt_in_also_required_for_temperature_older_than_15m(self):
+        est = mod.HydraulicCopEstimator()
+        est.ingest(capture(self.t, separate=False), self.t)
+        self.assertEqual(est.metrics["status"],
+                         "stare_znaczniki_temperatur_wymagaja_opt_in")
+
+    def test_temperature_older_than_12h_is_rejected(self):
+        self.est.ingest(capture(
+            self.t, supply_age=45000, return_age=45300,
+        ), self.t)
+        self.assertEqual(self.est.metrics["status"],
+                         "nieaktualne_pomiary_hydrauliczne")
+        self.assertIsNone(self.est.metrics["cop"])
+
+    def test_flow_older_than_15m_is_rejected(self):
+        self.est.ingest(capture(self.t, flow_age=1500), self.t)
+        self.assertEqual(self.est.metrics["status"], "nieaktualny_przeplyw")
+
+    def test_missing_timestamp_fails_closed(self):
+        devices = capture(self.t)
+        del devices[1]["updated_at"][116]
+        self.est.ingest(devices, self.t)
+        self.assertEqual(self.est.metrics["status"],
+                         "brak_znacznikow_zmiany_wartosci")
+
+    def test_small_or_negative_delta_t_never_counted(self):
+        self.est.ingest(capture(self.t, ret=25.25), self.t)
+        self.assertEqual(self.est.metrics["status"], "delta_t_za_mala_dla_szacowania_cop")
+        self.est.ingest(capture(self.t, ret=26), self.t)
+        self.assertEqual(self.est.metrics["status"], "delta_t_za_mala_dla_szacowania_cop")
+
+    def test_off_compressor_or_heater_blocks_and_resets_window(self):
+        self.est.ingest(capture(self.t, compressor=False), self.t)
+        self.assertEqual(self.est.metrics["status"], "sprezarka_wylaczona")
+        self.est.ingest(capture(self.t, heater=True), self.t)
+        self.assertEqual(self.est.metrics["status"],
+                         "grzalka_cwu_aktywna_niepelny_bilans_pradu")
+        self.est.ingest(capture(self.t, auxiliary_raw=3.0), self.t)
+        self.assertEqual(self.est.metrics["status"],
+                         "grzalka_wspomagajaca_moc_dodatnia_w_zakresie_katalogu")
+
+    def test_raw_id8_3000_not_assumed_live_heater(self):
+        self.est.ingest(capture(self.t, auxiliary_raw=3000.0), self.t)
+        self.assertIsNone(self.est.metrics["cop"])
+        self.assertEqual(self.est.metrics["confidence"], "niska")
+        audit = self.est.metrics["heater_evidence"]
+        self.assertTrue(audit["uncertain"])
+        self.assertFalse(audit["heater_off_confirmed"])
+
+    def test_missing_intermediate_snapshot_blocks_window(self):
+        self.observe(0)
+        self.observe(3, co=10100, meter_min=3)
+        self.observe(6, co=10100, meter_min=3)
+        self.observe(18, co=10350, meter_min=18)
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_przerwa_miedzy_snapshotami")
+
+    def test_mode_transition_blocks_interval(self):
+        self.observe(0)
+        self.observe(3, co=10100, meter_min=3)
+        self.observe(6, co=10100, meter_min=3, circuit="CWU")
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_zmiana_trybu_lub_niespojne_czujniki")
+
+    def test_stale_temperatures_cannot_drift_mid_window(self):
+        self.observe(0)
+        self.observe(3, co=10100, meter_min=3)
+        self.observe(6, co=10100, meter_min=3, supply=30)
+        self.assertEqual(self.est.accumulated_intervals, 0)
+        self.assertEqual(self.est.metrics["status"],
+                         "okno_energii_zmiana_trybu_lub_niespojne_czujniki")
+
+    def test_invalid_data_types_rejected_not_published(self):
+        self.est.ingest(capture(self.t, flow=True), self.t)
+        self.assertEqual(self.est.metrics["status"], "brak_liczbowych_pomiarow")
+        self.est.ingest(capture(self.t)+[capture(self.t)[1]], self.t)
+        self.assertEqual(self.est.metrics["status"], "brak_jednoznacznych_zrodel")
+
+    def test_no_private_identifiers_enter_published_metrics(self):
+        self.est.ingest(capture(self.t), self.t)
+        self.assertNotIn("private", str(self.est.metrics))
         self.assertNotIn("private", str(self.est.export_accumulated()))
         self.assertFalse(self.est.metrics["cop_certified"])
 

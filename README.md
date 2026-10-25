@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.20 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.21 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,16 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.21 — naprawa pomiaru przy skokowym liczniku: eliminacja fałszywego COP 9,44
+
+- **Powód poprawki:** realny akceptowany przedział z HA zawierał 0,491 kWh szacowanego ciepła i 0,052 kWh poboru ID57 przez 0,1 h (~6 minut), czyli COP 9,44. Pierwotna metoda dla krótkich przedziałów wiązała skok licznika z energią cieplną za arbitralny okres dwóch odczytów, bez obserwacji **dwóch granic** okresu elektrycznego. Nie jest to dowód prawdziwego COP.
+- Od teraz **żaden niezakotwiczony 3–6-minutowy przyrost energii nie zostanie zaakceptowany** do COP lub sum. Usunięto automatyczną ścieżkę krótkich przedziałów. Jedyny zapis energii pochodzi z pełnego, ciągle obserwowanego okresu **12–60 minut między dwoma faktycznie zobaczonymi skokami tego samego licznika**. Wymagane co najmniej cztery odcinki hydrauliczne, nie więcej niż 8 minut między odczytami i co najmniej 95% pokrycia.
+- Pierwszy skok tylko wyznacza początek; kolejne odczyty bez zmiany nie dopisują energii do akumulatora. Dla okna, którego elektryczny przyrost jest zbyt mały względem szacowanego ciepła, nadal następuje odrzucenie bez obcinania COP do górnego limitu.
+- Przy każdej niepewności przepływu, za długim wieku temperatur, odszranianiu o nieznanym stanie, zgłoszonej grzałce, zmianie obiegu albo luce w odczytach okno zostanie odrzucone. Stale timestamp **nie potwierdza rzeczywistej świeżości** pomiaru.
+- **Zgodność wsteczna:** historyczne zaakceptowane sumy z 0.5.20 są zachowane, w tym 9,44 CO. Wynik ten jest **niezweryfikowany**, nadal może służyć jako widoczna historyczna wartość zastępcza, nie zostaje skasowany i nie uzyskuje nowej daty. **Nie wolno uważać go za aktualny COP**. Nowe wartości będą pochodzić z poprawionej metodologii; już zapisane sumy z różnych metod nie są automatycznie kalibrowane.
+- W razie niewystarczających danych nadal `unknown` w encji chwilowej, a główna encja utrzymuje poprzedni wynik ze wskazaniem pochodzenia.
+- Bez serwerów pośredniczących, nowych zapytań, sterowania pompą lub publikowania wyprodukowanego ciepła jako energii zweryfikowanej.
 
 ## v0.5.20 — COP nie znika po aktualizacji z 0.5.18
 
