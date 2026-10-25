@@ -48,6 +48,7 @@ jobs:
               "custom_components.atlantic_cozytouch.energy_daily",
               "custom_components.atlantic_cozytouch.cop_hydraulic",
               "custom_components.atlantic_cozytouch.cop_snapshot",
+              "custom_components.atlantic_cozytouch.heater_evidence",
               "custom_components.atlantic_cozytouch.cop_accumulator",
               "custom_components.atlantic_cozytouch.heat_production_probe",
               "custom_components.atlantic_cozytouch.monthly_energy_probe",

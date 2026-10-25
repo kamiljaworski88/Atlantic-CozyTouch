@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.15 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.16 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.16 — naprawa fałszywej blokady COP przez ID8 = 3000
+
+- Na faktycznej pompie Extensa S Duo XL 10 otrzymaliśmy `ID8=3000`, co w poprzedniej wersji wyświetlało błędne **3000 kW** i blokowało COP. Katalog Atlantic dla ID8/9/11 podaje `kW` i maksimum `20`, więc dla takiego surowego odczytu skala/jednostka są **sprzeczne z deklaracją katalogową**; prawdopodobnym, ale NIEpotwierdzonym wyjaśnieniem jest 3000 W (3 kW).
+- Sensory ID8/9/11 zachowują swoje `unique_id` i od teraz wyświetlają **wartości surowe bez jednostki**, bez publikowania statystyk. Nowe atrybuty sensorów objaśniają konflikt skali i brak potwierdzenia aktywności grzałki.
+- Nowa diagnostyka `heater_evidence.py` w atrybucie `diagnostyka_grzalek` czujnika `COP Atlantic · status obliczeń`: stan odczytu ID8/9/11 i stan binarny ID64, bez numerów urządzeń lub tajnych danych.
+- ID64 jawnie raportujący aktywną grzałkę CWU **nadal blokuje COP**. Dodatni odczyt ID8/9/11 w udokumentowanym zakresie do 20 (w jednostkach katalogowych) **nadal blokuje eksperymentalny COP**. Wartości wyraźnie sprzeczne ze skalą katalogową, takie jak `3000`, są oznaczane jako **niezweryfikowane**, zamiast fałszywie potwierdzać pracę grzałki. Taki szacunek otrzymuje **niską pewność** i nie jest fabrycznym COP.
+- Poprawiono kolejność diagnostyki: `Delta T` i `Moc cieplna szacunkowa` będą obliczane przed sprawdzeniem grzałek, o ile spełniają pozostałe wymogi.
+- Bez nowych HTTP, bez zapisów do pompy i bez serwerów pośredniczących. Weryfikacja poboru grzałki po stronie pompy/elektryki pozostaje zalecana; 3000 samo w sobie nie dowodzi ani włączenia, ani wyłączenia.
 
 ## v0.5.15 — przebudowa eksperymentalnego COP na bazie obserwowanych snapshotów
 
