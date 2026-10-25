@@ -234,7 +234,7 @@ Integracja tworzy sensory **wyłącznie dla identyfikatorów, które pompa fakty
 | 119 | temperatura zewnętrzna |
 | 6, 150, 180 | diagnostyczne kody błędów |
 
-Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **COP i energia cieplna nie są obliczane bez wiarygodnych pomiarów. Wartości zużycia elektrycznego 44–46 mają w API jednostkę Wh i są prezentowane w kWh.**
+Uwaga: samo istnienie mapowania nie oznacza dostępności danej wielkości dla Alféa Extensa S Duo XL 10. Do potwierdzenia potrzebna jest próba odczytu rzeczywistego urządzenia. **Rzeczywisty COP okresowy wymaga wiarygodnego odczytu wytworzonego ciepła i pobranej energii elektrycznej z tego samego okresu. ID 44–46 oznaczają gaz, a nie prąd.**
 
 ## Instalacja (dopiero po przeglądzie PR)
 
