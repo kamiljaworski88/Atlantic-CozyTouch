@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.6 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
+> **Wersja 0.5.7 jest przeznaczona do testów. Nie instaluj jej bez uprzedniego przeglądu kodu oraz wykonania kopii zapasowej Home Assistant.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,24 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.7 — ostrożne użycie bitów 256/1024 z ID 164
+
+- **ID 164 = 1298** rozkłada się na 2 (pobór prądu CO),
+  16 (pobór prądu CWU), **256 (hipoteza obsługi produkcji ciepła CO)** i
+  **1024 (hipoteza obsługi produkcji ciepła CWU)**. Dwa ostatnie znaczenia
+  pochodzą z [niezależnego mapowania CozyTouch](https://github.com/gduteil/cozytouch/blob/main/custom_components/cozytouch/capability_table.py),
+  a nie z oficjalnego katalogu Atlantic Magellan v1.9.
+- Nowy sensor diagnostyczny **Możliwości produkcji ciepła · ID 164 (hipoteza)**:
+  `hipoteza_co_i_cwu`, `hipoteza_co`, `hipoteza_cwu`, `brak_flag_produkcji`
+  lub przy niejednoznacznych danych status błędu, z czytelnymi atrybutami.
+- Odczyt jest ograniczony do **jednej** pompy rozpoznanej po ID 91 i 112;
+  nie łączymy masek pochodzących z innych urządzeń konta.
+- Dotychczasowe diagnostyczne odczyty historii energii i gotowości COP
+  zyskują te same informacje o flagach. **Nie powstają żadne zmyślone kWh
+  wyprodukowanego ciepła ani liczbowy COP z samej maski.**
+- Bez nowych tras HTTP, przechowywania danych prywatnych, zmian pompy
+  ani ingerencji w HA Energy Dashboard.
 
 ## v0.5.6 — audyt katalogu producenta i bezpieczny test historii urządzenia
 
