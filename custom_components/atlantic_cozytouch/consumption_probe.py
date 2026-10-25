@@ -146,6 +146,61 @@ def summarize_consumptions(payload: object) -> dict:
     }
 
 
+def production_heat_feature_flags(devices: list[dict]) -> dict:
+    """Read two *hypothesized* thermal-production support flags from ID164.
+
+    The independent CozyTouch interoperability table maps bit 256 to heating
+    production and bit 1024 to DHW production. Atlantic's publicly published
+    v1.9 catalogue omits these names. Flags are NOT numeric heat meters.
+
+    Require one unambiguous heat pump with both active-circuit (91) and
+    flow (112) capabilities. Never OR different devices' feature masks.
+    """
+    pumps = [
+        d for d in devices
+        if {91, 112}.issubset(set(d.get("reported_capability_ids", [])))
+    ]
+    base = {
+        "produkcja_ciepla_co_bit_256": None,
+        "produkcja_ciepla_cwu_bit_1024": None,
+        "prad_co_bit_2": None,
+        "prad_cwu_bit_16": None,
+        "zrodlo_mapowania": "niezalezne_mapowanie_cozytouch_nie_katalog_oem",
+        "licznik_energii_cieplnej_kwh": False,
+        "cop_wyliczony_z_flag": False,
+    }
+    if len(pumps) != 1:
+        return {"status": "brak_jednoznacznej_pompy", **base}
+    device = pumps[0]
+    if 164 not in device.get("reported_capability_ids", []):
+        return {"status": "brak_id_164", **base}
+    raw = device.get("values", {}).get(164)
+    if (
+        type(raw) not in (int, float)
+        or not isfinite(raw)
+        or not 0 <= raw < 2**31
+        or not float(raw).is_integer()
+    ):
+        return {"status": "bledna_maska_id_164", **base}
+    mask = int(raw)
+    return {
+        "status": (
+            "hipoteza_co_i_cwu" if mask & 256 and mask & 1024
+            else "hipoteza_co" if mask & 256
+            else "hipoteza_cwu" if mask & 1024
+            else "brak_flag_produkcji"
+        ),
+        **{
+            **base,
+            "produkcja_ciepla_co_bit_256": bool(mask & 256),
+            "produkcja_ciepla_cwu_bit_1024": bool(mask & 1024),
+            "prad_co_bit_2": bool(mask & 2),
+            "prad_cwu_bit_16": bool(mask & 16),
+        },
+    }
+
+
+
 def energy_capabilities_summary(devices: list[dict]) -> dict:
     """Decode HOME_EnergyConsumptionCapabilities (164), without raw values."""
     masks: list[int] = []
