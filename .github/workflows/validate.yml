@@ -99,6 +99,13 @@ jobs:
                   "Uruchomienia sprężarki", "Czas pracy sprężarki",
                   "Modulacja sprężarki", "Czas pracy sprężarki — godziny",
               ))
+              readiness = next(
+                  e for e in sensors if e._attr_name == "COP Atlantic · gotowość danych"
+              )
+              attributes = readiness.extra_state_attributes
+              assert attributes["rekordy_produkcji_ciepla"] is None
+              assert attributes["produkcja_ciepla_zidentyfikowana"] is False
+              print("OK safe COP evidence, no unverified producedQuantity as heat")
               print("OK optional compressor entities registered with unknown state")
           asyncio.run(check_registration())
           PY
