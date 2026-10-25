@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.16 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.17 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,17 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.17 — naprawa ostatniej zmiany licznika energii
+
+Na rzeczywistej instalacji po 0.5.16 wykryto `nieaktualny_licznik_pradu`, mimo że pozostałe źródła mogą być użyteczne. W Magellan `modificationDate` ID57/59 oznacza **ostatnią zmianę wartości skumulowanego licznika**, nie ostatnie odpytywanie licznika. Licznik w spoczynku może przez długi czas legalnie się nie zmieniać.
+
+- Zamiast blokady przed wstępnym porównaniem, integracja tworzy **baseline z dwóch udanych obserwacji** nawet przy niezmienionym liczniku (ostatnia zmiana do 366 dni wstecz). Stan `punkt_startowy_starego_licznika_czekamy_na_przyrost` i `licznik_bez_przyrostu_ponad_15_minut` **nie podają COP**.
+- Po rzeczywistym przyroście ID57/59 wymagany jest **nowy, aktualny (do 15 min) vendor modificationDate**, późniejszy niż ostatnia zmiana z wcześniejszego punktu i nie wcześniejszy niż rozpoczęcie obserwowanego przedziału (tolerancja 60s). Jeżeli metadane nie potwierdzają nowego przyrostu, interwał jest odrzucany: `przyrost_pradu_z_nieaktualnym_znacznikiem` lub `zmiana_pradu_bez_nowego_znacznika`.
+- Stary znacznik nie jest używany przy wstępnym porównaniu świeżych temperatur i przepływu. Po zwiększeniu licznika wszystkie cztery kanały znowu podlegają weryfikacji czasowej. Nic nie jest ekstrapolowane na brakujące okresy.
+- W `COP Atlantic · status obliczeń` dostępny jest atrybut `diagnostyka_licznika_pradu` (ID57 albo ID59, czas od **ostatniej zmiany** i czy faktycznie był przyrost), bez wartości energii, ID urządzeń, adresów i tokenów.
+- **Brak zmiany wartości licznika nie jest błędem ani potwierdzeniem awarii**: może oznaczać brak poboru, wolne aktualizacje chmurowe lub postój pompy. Algorytm nadal wymaga pomiarów hydraulicznych, pewnego obiegu, prawidłowego przyrostu energii i zgodności zabezpieczeń.
+- Bez nowych endpointów, zapisów do pompy lub nowych serwerów. COP nadal jest eksperymentalny, nie weryfikowany ze sterownikiem.
 
 ## v0.5.16 — naprawa fałszywej blokady COP przez ID8 = 3000
 
