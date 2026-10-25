@@ -8,7 +8,12 @@ import sys
 import unittest
 
 PATH = Path(__file__).resolve().parents[1] / "custom_components" / "atlantic_cozytouch" / "cop_hydraulic.py"
-spec = importlib.util.spec_from_file_location("cop_hydraulic_test", PATH)
+# Pure modules loaded without importing the HA-dependent __init__.py
+from types import ModuleType
+package = ModuleType("offline_atlantic_cop")
+package.__path__ = [str(PATH.parent)]
+sys.modules[package.__name__] = package
+spec = importlib.util.spec_from_file_location("offline_atlantic_cop.cop_hydraulic", PATH)
 mod = importlib.util.module_from_spec(spec)
 sys.modules[spec.name] = mod
 spec.loader.exec_module(mod)
