@@ -4,9 +4,9 @@ This is a CONTROLLED SCHEMA PROBE, not a thermal-energy meter. Numeric
 producedQuantity in an Atlantic consumption response could mean electricity
 production; no unverified field is promoted to a COP/energy entity.
 
-Only at most 24 anonymous recent entries with valid numeric quantities and
-public-looking enum codes can be shown in local HA diagnostics. Device IDs,
-serials, URLs, costs, exact dates, account names and credentials are excluded.
+Only at most 24 anonymous recent entries with presence/positivity flags
+and bounded enum codes are shown in HA diagnostics. Numeric private energy
+values, device IDs, serials, URLs and exact dates are not exported.
 """
 from __future__ import annotations
 
@@ -90,8 +90,8 @@ def summarize_production_candidates(
                 "typ_kod": _code(series.get("type")),
                 "jednostka_kod": _code(series.get("unit")),
                 "tryb_kod": _code(period.get("mode")),
-                "pobrano_surowa_ilosc": _num(period.get("consumedQuantity")),
-                "wyprodukowano_surowa_ilosc": amount,
+                "pobor_liczbowy": _num(period.get("consumedQuantity")) is not None,
+                "produkcja_dodatnia": True,
             })
     candidates.sort(key=lambda x: (x["miesiac_utc"], x["seria_indeks"]), reverse=True)
     return {
