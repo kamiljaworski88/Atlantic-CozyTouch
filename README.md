@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.17 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.18 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,17 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.18 — eksperymentalny COP z obserwowanych okien skokowego licznika
+
+Na podstawie historii HA potwierdzono, że surowy przyrost ID57 występuje **serią skoków rzędu 51/52/74/75 jednostek**, rozdzielonych odczytami 0, często co kilkanaście–kilkadziesiąt minut. Wydłużenie starego limitu 20 minut przez prostą interpolację byłoby niebezpieczne.
+
+- Nowy moduł `cop_window.py` gromadzi **ciągłe krótkie odcinki hydrauliczne** o odstępach 2–8 minut, licząc dla każdego odcinka moc cieplną z rzeczywistych próbek; ani jeden brakujący 3-minutowy odczyt nie jest uzupełniany wstecz.
+- Okno zaczyna się **dopiero przy pierwszym faktycznie obserwowanym wzroście** licznika elektrycznego ID57/59 i kończy się **przy kolejnym potwierdzonym wzroście** tego samego licznika oraz obiegu; przed pierwszym skokiem nie liczony jest COP za nieobserwowane zużycie.
+- Obsługuje skoki po **20–60 minutach**, pod warunkiem że wszystkie krótkie odcinki łącznie pokrywają co najmniej 95% okresu, nie ma braków odczytów, przełączeń obiegu, resetów licznika ani niezgodności pomiarów.
+- Do akumulatora CO/CWU trafia **jedynie kompletny, fizycznie prawdopodobny bilans**. Jeżeli np. skok `51 Wh` nie pasuje do sumy mocy cieplnej z 30 minut (dawałby COP powyżej 10), taki przedział jest **odrzucany**, a nie sztucznie przycinany do 10.
+- Bez podwójnego liczenia: dotychczasowa metoda może przyjąć krótkie przedziały do 20 minut; metoda okien obsługuje tylko dłuższe od 20 minut. Dodatkowy atrybut `diagnostyka_okna_energii` pokazuje kompletność i powód odmowy, **bez prywatnych identyfikatorów i wartości energii**.
+- Okresowe COP są nadal **diagnostyczne, niecertyfikowane i o niskiej pewności**, a grzałki, stara telemetria, brak pracy pompy lub problem z Wi-Fi mogą uniemożliwić zaakceptowanie okna. Zmiany nie dodają nowego endpointu ani transmisji danych do innych serwerów. Dane starego magazynu HA są zachowane.
 
 ## v0.5.17 — naprawa ostatniej zmiany licznika energii
 

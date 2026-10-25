@@ -20,6 +20,7 @@ from math import isfinite
 
 from .cop_accumulator import CopEnergyAccumulator
 from .heater_evidence import assess_heaters
+from .cop_window import ObservedElectricWindow
 
 HEAT_FACTOR = 4.186 / 60.0   # water, kW / (L/min * Kelvin)
 WH_PER_RAW = 1.0             # candidate vendor 0.001 kWh per raw increment
@@ -102,6 +103,7 @@ class HydraulicCopEstimator:
             raise ValueError("Experimental cross-device COP requires a boolean")
         self.allow_unique_cross_device = allow_unique_cross_device
         self.accumulator = CopEnergyAccumulator()
+        self.window = ObservedElectricWindow()
         self._baseline: _Sample | None = None
         self._last_good: tuple[float, datetime] | None = None
         self.metrics: dict[str, object] = {}
@@ -139,17 +141,21 @@ class HydraulicCopEstimator:
             "counter_scale": "eksperymentalna_0_001_kWh_na_jednostke",
             "heater_evidence": None,
             "observation_method": "kolejne_udane_snapshoty_ha",
+            "electric_window_diagnostics": self.window.diagnostics(),
             "accumulated": self.accumulator.snapshot(),
         }
 
     def invalidate(self) -> None:
         self._baseline = None
+        self.window.reset()
         self.metrics = self._empty()
         self.metrics["status"] = "brak_ciaglosci_odczytow"
 
     def _reject(self, code: str) -> None:
         self._baseline = None
+        self.window.reset()
         self.metrics["status"] = code
+        self.metrics["electric_window_diagnostics"] = self.window.diagnostics()
 
     def ingest(self, devices: list[dict], now: datetime) -> None:
         if now.tzinfo is None:
@@ -297,6 +303,32 @@ class HydraulicCopEstimator:
             supply_stamp=sup_ts, return_stamp=ret_ts, flow_stamp=flow_ts,
             stale_temperature=old_temp,
         )
+        # Longer electricity increments are evaluated only from fully
+        # observed 3-minute hydraulic snapshots between *two witnessed*
+        # changes of this cumulative meter. First witnessed increment only
+        # establishes an anchor; it can never create a fabricated historic COP.
+        long_window = self.window.ingest(current)
+        self.metrics["electric_window_diagnostics"] = self.window.diagnostics()
+        if long_window is not None:
+            if self.accumulator.add(
+                circuit, long_window.heat_kwh,
+                long_window.electric_kwh, long_window.seconds,
+            ):
+                self.metrics["accumulated"] = self.accumulator.snapshot()
+                self.metrics["electrical_kw"] = round(
+                    long_window.electric_kwh * 3600 / long_window.seconds, 3
+                )
+                estimated = round(long_window.heat_kwh / long_window.electric_kwh, 2)
+                self._last_good = (estimated, now)
+                self.metrics["cop"] = estimated
+                self.metrics["last_cop"] = estimated
+                self.metrics["last_cop_at"] = now.isoformat()
+                self.metrics["confidence"] = "niska"
+                self.metrics["status"] = "szacunek_niska_pewnosc_pelne_okno_licznika"
+            else:
+                self.metrics["status"] = "okno_energii_odrzucone_przez_akumulator"
+            self._baseline = current
+            return
         prior = self._baseline
         self._baseline = current
         if prior is None or prior.source_key != current.source_key or prior.circuit != circuit:
