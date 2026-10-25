@@ -169,6 +169,67 @@ class TestConsumptionProbe(unittest.TestCase):
             "2026-10-23",
         )
 
+    def test_heat_production_flags_are_hypotheses_not_cop_or_kwh(self):
+        devices = [{
+            "id": "pump",
+            "reported_capability_ids": [91, 112, 164],
+            "values": {164: 1298},
+        }]
+        s = module.production_heat_feature_flags(devices)
+        self.assertEqual(s["status"], "hipoteza_co_i_cwu")
+        self.assertTrue(s["produkcja_ciepla_co_bit_256"])
+        self.assertTrue(s["produkcja_ciepla_cwu_bit_1024"])
+        self.assertTrue(s["prad_co_bit_2"])
+        self.assertTrue(s["prad_cwu_bit_16"])
+        self.assertFalse(s["licznik_energii_cieplnej_kwh"])
+        self.assertFalse(s["cop_wyliczony_z_flag"])
+        self.assertIn("nie_katalog_oem", s["zrodlo_mapowania"])
+        self.assertNotIn("pump", str(s))
+
+    def test_heat_production_flags_support_partial_or_absent_bits(self):
+        cases = [
+            (256, "hipoteza_co", True, False),
+            (1024, "hipoteza_cwu", False, True),
+            (2 + 16, "brak_flag_produkcji", False, False),
+            (2 + 16 + 256 + 1024, "hipoteza_co_i_cwu", True, True),
+        ]
+        for mask, state, co, cwu in cases:
+            with self.subTest(mask=mask):
+                dev = [{"reported_capability_ids": [91, 112, 164],
+                        "values": {164: mask}}]
+                flags = module.production_heat_feature_flags(dev)
+                self.assertEqual(flags["status"], state)
+                self.assertIs(flags["produkcja_ciepla_co_bit_256"], co)
+                self.assertIs(flags["produkcja_ciepla_cwu_bit_1024"], cwu)
+
+    def test_does_not_or_bits_across_devices_or_guess_for_missing_ids(self):
+        one = {"reported_capability_ids": [91, 112, 164], "values": {164: 256}}
+        two = {"reported_capability_ids": [91, 112, 164], "values": {164: 1024}}
+        self.assertEqual(
+            module.production_heat_feature_flags([one, two])["status"],
+            "brak_jednoznacznej_pompy"
+        )
+        self.assertIsNone(
+            module.production_heat_feature_flags([one, two])["produkcja_ciepla_co_bit_256"]
+        )
+        self.assertEqual(
+            module.production_heat_feature_flags([
+                {"reported_capability_ids": [164], "values": {164: 1298}}
+            ])["status"],
+            "brak_jednoznacznej_pompy"
+        )
+        self.assertEqual(module.production_heat_feature_flags([{
+            "reported_capability_ids": [91, 112], "values": {},
+        }])["status"], "brak_id_164")
+        for invalid in (None, True, -1, float("nan"), float("inf"), 1.2, "1298", 2**40):
+            with self.subTest(invalid=invalid):
+                flags = module.production_heat_feature_flags([{
+                    "reported_capability_ids": [91, 112, 164],
+                    "values": {164: invalid},
+                }])
+                self.assertEqual(flags["status"], "bledna_maska_id_164")
+                self.assertIsNone(flags["produkcja_ciepla_cwu_bit_1024"])
+
     def test_energy_support_mask_distinguishes_electricity_and_heat(self):
         devices = [{
             "reported_capability_ids": [164],
