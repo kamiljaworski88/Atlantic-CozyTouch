@@ -52,15 +52,16 @@ Atrybut zawiera maksymalnie 24 anonimowe rekordy:
 - numer serii tylko w obrębie odpowiedzi (bez deviceId/serial/URL),
 - `miesiac_utc`,
 - `kategoria_kod`, `typ_kod`, `jednostka_kod`, `tryb_kod`,
-- `pobrano_surowa_ilosc` i `wyprodukowano_surowa_ilosc`.
+- `pobor_liczbowy` oraz `produkcja_dodatnia` (wyłącznie wartości logiczne).
 
-**To diagnostyka, nie produkcja ciepła i nie COP.** Wartości nie są
-konwertowane do kWh ani przypisywane do CO/CWU. Producent dla niektórych pomp
+**To diagnostyka, nie produkcja ciepła i nie COP.** Prywatne liczby energii
+nie trafiają do eksportowanych atrybutów ani do liczników CO/CWU. Producent dla niektórych pomp
 opisuje wartości energii jako szacunki, a nie odczyt z miernika.
 
 ### Kryterium dopuszczenia automatycznego COP
 
-1. W dwóch różnych okresach miesięcznych wartość produkcji z identycznego
+1. W przyszłej fazie, po weryfikacji odczytu przez samego użytkownika,
+   w dwóch różnych okresach miesięcznych wartość produkcji z identycznego
    źródła (`type/unit/category/mode`) musi zgadzać się z osobnym wskazaniem
    energii cieplnej CO/CWU sterownika, po uwzględnieniu formatu/zaokrąglenia.
 2. Jednoznaczne przypisanie CO/CWU po katalogu lub wzorcu danych w czasie,
