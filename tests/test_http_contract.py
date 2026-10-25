@@ -121,7 +121,7 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
         session = Session()
         client = AtlanticReadOnlyClient(session, "test@example.invalid", "test-secret")
         result = await client.async_read()
-        self.assertEqual(result[0]["values"][44], 5.0)
+        self.assertEqual(result[0]["values"][44], 5000.0)  # raw GAS, not /1000 kWh electricity
         self.assertEqual(result[0]["values"][24], 21.0)
         self.assertTrue(result[0]["values"][51])
         self.assertEqual(
