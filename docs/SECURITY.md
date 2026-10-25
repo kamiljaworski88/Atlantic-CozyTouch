@@ -12,6 +12,7 @@ Home Assistant komunikuje się **bezpośrednio** z oficjalną usługą `https://
 | Stan urządzeń | GET /magellan/cozytouch/setupviewv2 | Tak |
 | Parametry sprężarki | GET /magellan/capabilities/?deviceId={accountDevice} | Tak, tylko ID z konta, maks. co 15 min |
 | Historia miesięczna | GET /magellan/setups/{accountSetupId}/consumptions?periodicity=monthly | Tak, maks. co 6 godzin |
+| Historia urządzenia (diagnostyka) | GET /magellan/devices/{accountDeviceId}/consumptions?periodicity=daily lub monthly | Tak, jedno urządzenie z konta, maks. dwa GET co 6 godzin |
 | Zmiana nastaw / trybów | dowolny endpoint | **Nie** |
 | Komendy serwisowe | dowolny endpoint | **Nie** |
 | Wysyłka do innych hostów | dowolny | **Nie** |
