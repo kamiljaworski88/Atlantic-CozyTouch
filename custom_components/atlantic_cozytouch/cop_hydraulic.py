@@ -10,6 +10,8 @@ from __future__ import annotations
 from datetime import datetime, timezone
 from math import isfinite
 
+from .cop_accumulator import CopEnergyAccumulator
+
 HEAT_FACTOR = 4.186 / 60.0  # Approximation for pure water, kW/(l/min*K).
 MAX_SENSOR_AGE_S = 900
 MAX_SNAPSHOT_SKEW_S = 180
@@ -67,12 +69,25 @@ class HydraulicCopEstimator:
         if type(allow_unique_cross_device) is not bool:
             raise ValueError("Cross-device experimental COP must be a boolean")
         self.allow_unique_cross_device = allow_unique_cross_device
+        self.accumulator = CopEnergyAccumulator()
         # device, circuit, raw Wh, Wh timestamp, thermal kW, mode timestamp,
         # initial supply and return temperatures to detect inconsistent history.
         self._baseline: tuple[str, str, float, int, float, int | None, float, float] | None = None
         self._last_good: tuple[float, datetime] | None = None
         self.metrics: dict[str, object] = {}
         self.invalidate()
+
+    @property
+    def accumulated_intervals(self) -> int:
+        return self.accumulator.intervals
+
+    def export_accumulated(self) -> dict:
+        return self.accumulator.export_state()
+
+    def restore_accumulated(self, raw: object) -> bool:
+        loaded = self.accumulator.restore_state(raw)
+        self.metrics = self._empty()
+        return loaded
 
     def _empty(self, now: datetime | None = None) -> dict[str, object]:
         last_cop: float | None = None
@@ -90,6 +105,7 @@ class HydraulicCopEstimator:
             "last_cop": last_cop, "last_cop_at": last_at,
             "cop_certified": False,
             "temperature_evidence": "nie_sprawdzono",
+            "accumulated": self.accumulator.snapshot(),
         }
 
     def invalidate(self) -> None:
@@ -237,7 +253,7 @@ class HydraulicCopEstimator:
         previous_energy, previous_ts, previous_thermal_kw, previous_mode_ts, previous_supply, previous_ret = baseline[2:]
         if (previous_mode_ts is not None and mode_ts is not None
                 and mode_ts != previous_mode_ts):
-            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts)
+            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts, supply, ret)
             self.metrics["status"] = "zmiana_trybu_pracy"
             return
         # The weaker assumption is only usable if both temperature values
@@ -249,7 +265,7 @@ class HydraulicCopEstimator:
         elapsed = electric_ts - previous_ts
         delta_wh = raw - previous_energy
         if elapsed < 0 or elapsed > MAX_INTERVAL_S or delta_wh < 0:
-            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts)
+            self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts, supply, ret)
             self.metrics["status"] = "przerwa_lub_reset_licznika"
             return
         if delta_wh == 0:
@@ -260,7 +276,7 @@ class HydraulicCopEstimator:
             self.metrics["status"] = "odczyt_licznika_niespojny"
             return
 
-        self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts)
+        self._baseline = (key, circuit, raw, electric_ts, thermal_kw, mode_ts, supply, ret)
         # Vendor Wh scale for ID57/59 is still a corroborated hypothesis.
         electrical_kw = delta_wh * 3.6 / elapsed
         if not 0.1 < electrical_kw < 15:
@@ -271,6 +287,14 @@ class HydraulicCopEstimator:
         if not 0.5 <= estimated_cop <= 10:
             self.metrics["status"] = "cop_poza_zakresem"
             return
+
+        # Add only a complete, validated interval. If the pump is idle,
+        # counters stall or cloud data are too old, the cumulative ratio
+        # remains unchanged rather than filling the gap with guesses.
+        heat_kwh = (previous_thermal_kw + thermal_kw) / 2 * elapsed / 3600
+        electricity_kwh = delta_wh / 1000
+        self.accumulator.add(circuit, heat_kwh, electricity_kwh, elapsed)
+        self.metrics["accumulated"] = self.accumulator.snapshot()
 
         good = round(estimated_cop, 2)
         self._last_good = (good, now)
