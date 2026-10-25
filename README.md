@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.18 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.19 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Bezpieczeństwo
 
@@ -12,6 +12,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.19 — stała widoczność ostatniego zaakceptowanego COP
+
+- Dotychczasowa encja "COP Atlantic · szacunkowy" zachowuje swój unique_id i wyświetla ostatni zaakceptowany szacunek również w kolejnych odczytach bez wzrostu licznika. Jest to wynik HISTORYCZNY, nie aktualny COP. W atrybutach jest dokładny czas UTC, wiek w godzinach, obieg, metoda, klasa niepewności i informacja o historycznym charakterze.
+- Nowa encja "COP Atlantic · aktualna próbka (chwilowy)" wyświetla wynik tylko w momencie nowego zaakceptowanego przedziału i może być unknown podczas postoju.
+- Nowe encje "COP Atlantic · ostatni zaakceptowany CO" oraz "COP Atlantic · ostatni zaakceptowany CWU" zachowują oddzielne wartości. Istniejąca encja "ostatni poprawny szacunek (12 h)" zachowuje identyfikator, a etykieta wskazuje teraz wynik historyczny bez 12-godzinnego limitu.
+- Ostatnie wartości i znaczniki czasu są zapisywane lokalnie osobno od dotychczasowych sum energii i przywracane po restarcie HA. Brak nowych endpointów sieciowych, zapisów do pompy i statystyk HA Energy.
+- Jednorazowa migracja nie rekonstruuje historycznych krótkich wyników z poprzednich wersji: pierwszy utrwalony ostatni COP pojawi się po nowym zaakceptowanym pomiarze w 0.5.19.
+- Uwaga: COP 9,44 może być niedokładny; utrwalanie wskazania nie stanowi potwierdzenia poprawności bilansu i nie zmienia diagnostycznego statusu danych.
 
 ## v0.5.18 — eksperymentalny COP z obserwowanych okien skokowego licznika
 
