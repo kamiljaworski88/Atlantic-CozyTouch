@@ -221,9 +221,14 @@ class HydraulicCopEstimator:
         else:
             # With changed temperatures, a large discontinuity in vendor
             # timestamps between flow/thermal/electrical channels is suspicious.
-            skew = max(sup_ts, ret_ts, elec_ts, flow_ts) - min(
-                sup_ts, ret_ts, elec_ts, flow_ts
+            # A counter that has not changed must not force the *fresh*
+            # hydraulic measurements to look time-incompatible. Once the
+            # counter increments its vendor timestamp is included again.
+            check_stamps = (
+                (sup_ts, ret_ts, flow_ts) if electricity_age > MAX_LIVE_AGE_S
+                else (sup_ts, ret_ts, elec_ts, flow_ts)
             )
+            skew = max(check_stamps) - min(check_stamps)
             if skew > (600 if not paired else 180):
                 self._reject("niespojne_czasy_probek")
                 return
