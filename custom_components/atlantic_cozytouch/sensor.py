@@ -704,6 +704,7 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
         return {
             "aktywny_obieg": metrics.get("circuit"),
             "topologia_zrodel": metrics.get("topology"),
+            "wiek_probek_s": metrics.get("source_ages_seconds"),
             "ostatni_poprawny_szacunek_utc": metrics.get("last_cop_at"),
             "algorytm_eksperymentalny": True,
             "status_walidacji": metrics.get("status"),
