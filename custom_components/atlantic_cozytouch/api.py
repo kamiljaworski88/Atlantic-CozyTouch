@@ -365,7 +365,10 @@ class AtlanticReadOnlyClient:
             return
         device_id = next(iter(self._device_energy_ids))
         summaries: dict[str, dict] = {}
-        for period in ("daily", "monthly"):
+        # The monthly source is the actual heat-production candidate. A
+        # daily 400/500 must never prevent examining the monthly response.
+        # Only a 401 or 429 short-circuits to protect the Atlantic account.
+        for period in ("monthly", "daily"):
             try:
                 self._ensure_not_throttled()
                 async with self._request(
@@ -377,27 +380,32 @@ class AtlanticReadOnlyClient:
                 ) as response:
                     if response.status == 429:
                         self._note_rate_limited(response)
-                        summaries[period] = {"state": "limit_zapytan"}
+                        summaries[period] = {
+                            "state": "limit_zapytan", "http_status": 429,
+                        }
                         break
                     if response.status == 401:
                         self._token = None
-                        summaries[period] = {"state": "brak_autoryzacji"}
+                        summaries[period] = {
+                            "state": "brak_autoryzacji", "http_status": 401,
+                        }
                         break
                     if response.status in (403, 404, 405):
-                        summaries[period] = {"state": "endpoint_niedostepny"}
-                        if period == "daily":
-                            self._device_energy_disabled = True
-                            break
+                        summaries[period] = {
+                            "state": "endpoint_niedostepny",
+                            "http_status": response.status,
+                        }
                         continue
                     if response.status != 200:
-                        summaries[period] = {"state": "blad_http"}
-                        if period == "daily":
-                            break
+                        summaries[period] = {
+                            "state": "blad_http", "http_status": response.status,
+                        }
                         continue
                     payload = await response.json()
                 details = summarize_consumptions(payload)
                 summaries[period] = {
                     "state": details.get("state"),
+                    "http_status": 200,
                     "serie": details.get("serie", 0),
                     "typy": details.get("typy", []),
                     "jednostki": details.get("jednostki", []),
@@ -419,10 +427,24 @@ class AtlanticReadOnlyClient:
                     ValueError, TypeError, OverflowError, AtlanticError):
                 summaries[period] = {"state": "blad_polaczenia"}
                 break
+        # Disable only when BOTH tested paths are explicitly unavailable;
+        # HTTP 400 and 5xx can be parameter validation / transient failures.
+        if all(summaries.get(p, {}).get("state") == "endpoint_niedostepny"
+               for p in ("monthly", "daily")):
+            self._device_energy_disabled = True
+
+        monthly = summaries.get("monthly", {})
+        daily = summaries.get("daily", {})
+        # Keep the root status useful even when one period fails, while both
+        # individual HTTP statuses remain visible for troubleshooting.
+        chosen = next(
+            (s for s in (monthly, daily) if s.get("state") in ("dostepna", "brak_danych")),
+            monthly or daily,
+        )
         self.device_energy_summary = {
-            "state": summaries.get("daily", {}).get("state", "nie_sprawdzono"),
-            "daily": summaries.get("daily", {}),
-            "monthly": summaries.get("monthly", {}),
+            "state": chosen.get("state", "nie_sprawdzono"),
+            "daily": daily,
+            "monthly": monthly,
             "czy_produkcja_oznacza_cieplo": "niezweryfikowane",
         }
 

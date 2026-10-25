@@ -506,7 +506,7 @@ class TestMonthlyEndpoint(unittest.IsolatedAsyncioTestCase):
 
 class DeviceEnergySession(Session):
     """Network-free test of vendor device-specific daily/monthly consumption."""
-    def __init__(self, device_status=200):
+    def __init__(self, device_status=200, daily_status=None, monthly_status=None):
         super().__init__(setup_payload=[{"id": 123, "devices": [{
             "deviceId": 9, "name": "Simulated pump", "capabilities": [
                 {"capabilityId": 91, "value": "1"},
@@ -514,11 +514,17 @@ class DeviceEnergySession(Session):
             ],
         }]}])
         self.device_status = device_status
+        self.daily_status = daily_status
+        self.monthly_status = monthly_status
 
     def get(self, url, **kwargs):
         if "/magellan/devices/9/consumptions?periodicity=" in url:
             self.calls.append(("GET", url, kwargs))
-            return Reply(self.device_status, [{
+            period_status = (
+                self.monthly_status if url.endswith("=monthly")
+                else self.daily_status
+            )
+            return Reply(self.device_status if period_status is None else period_status, [{
                 "deviceId": "SECRET_IDENTIFIER",
                 "type": 1, "unit": 1, "category": 7,
                 "consumptionPeriods": [{
@@ -559,12 +565,61 @@ class TestDeviceEnergyProbe(unittest.IsolatedAsyncioTestCase):
             self.assertNotIn(private, result)
         self.assertEqual(
             [(m, u) for m, u, _ in session.calls][-2:],
-            [("GET", day_url), ("GET", month_url)],
+            [("GET", month_url), ("GET", day_url)],
         )
         await client.async_probe_device_energy()
         self.assertEqual(
             len([u for m, u, _ in session.calls if "/magellan/devices/" in u]), 2
         )
+
+    async def test_http_400_daily_does_not_hide_monthly_production_probe(self):
+        session = DeviceEnergySession(daily_status=400, monthly_status=200)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+        await client.async_read()
+        await client.async_probe_device_energy()
+        result = client.device_energy_summary
+        self.assertEqual(result["state"], "dostepna")
+        self.assertEqual(result["monthly"]["http_status"], 200)
+        self.assertEqual(result["daily"]["http_status"], 400)
+        self.assertEqual(result["daily"]["state"], "blad_http")
+        self.assertEqual(
+            result["monthly"]["audyt_surowych_kandydatow"]["state"],
+            "kandydat_do_porownania_ze_sterownikiem"
+        )
+        self.assertNotIn("SECRET_IDENTIFIER", str(result))
+        self.assertNotIn("123456", str(result))
+        self.assertNotIn("456789", str(result))
+        self.assertEqual(
+            [u.split("=")[-1] for m, u, _ in session.calls
+             if "/magellan/devices/" in u],
+            ["monthly", "daily"]
+        )
+
+    async def test_http_500_monthly_still_checks_daily_with_explainable_code(self):
+        session = DeviceEnergySession(monthly_status=500, daily_status=200)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+        await client.async_read()
+        await client.async_probe_device_energy()
+        result = client.device_energy_summary
+        self.assertEqual(result["state"], "dostepna")
+        self.assertEqual(result["monthly"]["http_status"], 500)
+        self.assertEqual(result["daily"]["http_status"], 200)
+
+    async def test_401_and_429_do_not_issue_follow_up_energy_request(self):
+        for status, expected in ((401, "brak_autoryzacji"), (429, "limit_zapytan")):
+            with self.subTest(status=status):
+                session = DeviceEnergySession(monthly_status=status)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fakepass")
+                await client.async_read()
+                await client.async_probe_device_energy()
+                result = client.device_energy_summary
+                self.assertEqual(result["state"], expected)
+                self.assertEqual(result["monthly"]["http_status"], status)
+                self.assertEqual(result["daily"], {})
+                self.assertEqual(
+                    len([u for _, u, _ in session.calls
+                         if "/magellan/devices/" in u]), 1
+                )
 
     async def test_rejected_or_throttled_device_history_does_not_break_pump_poll(self):
         for status, label in ((403, "endpoint_niedostepny"),
