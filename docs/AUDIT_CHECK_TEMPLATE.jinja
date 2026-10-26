@@ -1,0 +1,36 @@
+{# Lokalny raport wybranych atrybutów. Nie eksportuje entity_id ani device_id. #}
+{% set entities = integration_entities('atlantic_cozytouch') %}
+{% set wanted = [
+  ('status_cop', 'COP Atlantic · status obliczeń'),
+  ('cieplo', 'COP Atlantic · audyt źródeł ciepła'),
+  ('historia_miesieczna', 'Historia energii Atlantic · miesięczna kontrola'),
+  ('historia_urzadzenia', 'Historia energii Atlantic · odczyt urządzenia'),
+  ('odczyt', 'Ostatni udany odczyt')
+] %}
+{% set out = namespace(rows=[]) %}
+{% for key, label in wanted %}
+  {% set match = namespace(ids=[]) %}
+  {% for entity in entities %}
+    {% if label in (state_attr(entity, 'friendly_name') or '') %}
+      {% set match.ids = match.ids + [entity] %}
+    {% endif %}
+  {% endfor %}
+  {% if match.ids | count == 1 %}
+    {% set e = match.ids[0] %}
+    {% set ages = state_attr(e, 'wiek_probek_s') %}
+    {% set out.rows = out.rows + [{
+      'metryka': key, 'stan': states(e),
+      'ostatnie_zmiany_s': ages,
+      'rozbieznosc_zmian_temperatur_s': state_attr(e, 'rozbieznosc_znacznikow_temperatur_s'),
+      'semantyka': state_attr(e, 'semantyka_znacznikow'),
+      'okno': state_attr(e, 'diagnostyka_okna_energii'),
+      'ostatni_wynik_utc': state_attr(e, 'ostatni_zaakceptowany_cop_utc'),
+      'cieplo_potwierdzone': state_attr(e, 'energia_cieplna_potwierdzona'),
+      'cop_okresowy_gotowy': state_attr(e, 'cop_okresowy_gotowy')
+    }] %}
+  {% else %}
+    {% set out.rows = out.rows + [{'metryka': key, 'stan': 'brak_lub_niejednoznaczne_encje'}] %}
+  {% endif %}
+{% endfor %}
+{{ out.rows | to_json(pretty_print=True) }}
+{# Wiek odczytu API nie potwierdza wieku pomiaru urządzenia. #}

@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import logging
+from math import isfinite
 
 import aiohttp
 
@@ -36,7 +37,6 @@ _ALLOWED_HTTP_OPERATIONS = frozenset(
     }
 )
 _MIN_THROTTLE_SECONDS = 300
-_MAX_THROTTLE_SECONDS = 3600
 _DEFAULT_THROTTLE_SECONDS = 900
 
 
@@ -116,7 +116,7 @@ class AtlanticReadOnlyClient:
                 and not consumption_allowed and not monthly_allowed
                 and not capability_allowed and not device_energy_allowed):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
-        if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout"} & kwargs.keys():
+        if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout", "params"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
 
         options = dict(kwargs)
@@ -173,7 +173,7 @@ class AtlanticReadOnlyClient:
             raise AtlanticRateLimited("Atlantic rate-limit cooldown active")
 
     def _note_rate_limited(self, response: object) -> None:
-        """Respect Retry-After (seconds or HTTP date), clamped to 5–60 minutes."""
+        """Respect finite Retry-After values without retrying before the server allows."""
         headers = getattr(response, "headers", {}) or {}
         retry_after = headers.get("Retry-After", "")
         wait = _DEFAULT_THROTTLE_SECONDS
@@ -188,10 +188,18 @@ class AtlanticReadOnlyClient:
                     wait = (retry_date - datetime.now(timezone.utc)).total_seconds()
                 except (ValueError, TypeError, OverflowError):
                     wait = _DEFAULT_THROTTLE_SECONDS
-        # Handles malformed, negative, or huge values.
-        if not (_MIN_THROTTLE_SECONDS <= wait <= _MAX_THROTTLE_SECONDS):
-            wait = max(_MIN_THROTTLE_SECONDS, min(_MAX_THROTTLE_SECONDS, wait)) if wait == wait else _DEFAULT_THROTTLE_SECONDS
-        self._cooldown_until = datetime.now(timezone.utc) + timedelta(seconds=wait)
+        # A maximum of one hour would violate a longer vendor Retry-After.
+        # Malformed/nonfinite values use the conservative default. Saturate at
+        # datetime.max rather than overflowing on very large finite headers.
+        if not isfinite(wait) or wait < 0:
+            wait = _DEFAULT_THROTTLE_SECONDS
+        wait = max(_MIN_THROTTLE_SECONDS, wait)
+        now = datetime.now(timezone.utc)
+        latest = datetime.max.replace(tzinfo=timezone.utc)
+        self._cooldown_until = (
+            latest if wait >= (latest - now).total_seconds()
+            else now + timedelta(seconds=wait)
+        )
 
     async def _authenticate(self) -> None:
         """The only HTTP POST: exchange user credentials for an access token."""
@@ -573,6 +581,9 @@ class AtlanticReadOnlyClient:
         self._consumption_due = now + timedelta(minutes=15)
         if self._setup_id is None:
             self.consumption_summary = {"state": "brak_id_instalacji"}
+            return
+        if self._token is None:
+            self.consumption_summary = {"state": "brak_autoryzacji"}
             return
         try:
             self._ensure_not_throttled()

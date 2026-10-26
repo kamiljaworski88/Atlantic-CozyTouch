@@ -56,6 +56,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     async def update():
         try:
             devices = await client.async_read()
+            # Timestamp the setup observation before unrelated history probes.
+            observed_at = datetime.now(UTC)
             # Bounded optional device GET. Its failure never prevents standard
             # telemetry or causes device writes.
             await client.async_probe_compressor_capabilities(devices)
@@ -70,7 +72,6 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             coordinator.atlantic_daily_energy = {
                 category: dict(days) for category, days in client.energy_daily.items()
             }
-            observed_at = datetime.now(UTC)
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
             old_intervals = cop_monitor.accumulated_intervals

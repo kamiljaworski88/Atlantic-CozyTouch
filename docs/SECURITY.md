@@ -47,7 +47,7 @@ Projekt bazuje na obserwacji publicznie udokumentowanego zachowania interfejsu, 
 - Centralny filtr `AtlanticReadOnlyClient._request` zezwala tylko na `POST https://apis.groupe-atlantic.com/users/token` (logowanie) oraz dokładnie dopuszczone `GET` odczytu instalacji, historii energii i parametrów pompy przypisanej do zalogowanego konta.
 - Nieprawidłowa metoda lub URL są odrzucane **przed** jakimkolwiek żądaniem.
 - Brak przekierowań HTTP, brak możliwości ustawienia `ssl=False` lub parametru proxy przez metodę żądania.
-- HTTP 429: wstrzymanie odczytu na 5–60 min zgodnie z `Retry-After`, z domyślną przerwą 15 min.
+- HTTP 429: wstrzymanie odczytu co najmniej na poprawne `Retry-After` (minimum 5 min), z domyślną przerwą 15 min dla błędnego nagłówka; dłuższe żądanie serwera nie jest skracane.
 - Ograniczenie przetwarzania do 128 urządzeń i 1024 parametrów na urządzenie; nieznane identyfikatory nie są publikowane.
 
 ### Scenariusze testowe
@@ -58,3 +58,6 @@ Testy bez połączenia z producentem obejmują: odmowę wysłania niedozwolonego
 - Filtr działa na poziomie kodu integracji; nie jest zaporą sieciową i nie audytuje innych dodatków Home Assistant.
 - Integracja nie tworzy serwerów pośredniczących autora, ale sieć hosta/ISP może korzystać z własnej infrastruktury pośredniej.
 - Nie przeprowadzono jeszcze testów z rzeczywistą pompą ani niezależnego audytu penetracyjnego. Zielony CI nie dowodzi kompatybilności urządzenia.
+
+
+Audyt 26.10.2026: blokada `params` w transporcie, brak GET dziennej historii bez tokenu, respektowanie długiego Retry-After. Limity liczby obiektów po JSON nie są limitem rozmiaru pobieranej odpowiedzi. Szczegóły w INDEPENDENT_AUDIT_20261026.md.

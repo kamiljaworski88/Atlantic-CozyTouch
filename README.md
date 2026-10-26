@@ -4,6 +4,14 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 
 > **Wersja 0.5.22 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
+## Niezależny audyt 26.10.2026 (gałąź audytowa)
+
+[Raport, kontrprzykłady i plan rozwoju](docs/INDEPENDENT_AUDIT_20261026.md)
+wykazuje, że dwa skoki licznika nie dowodzą zgodności okresów Q/E.
+Ten sam iloraz 0,491/0,052 = 9,44 może nadal zostać przyjęty po 12 minutach.
+218 testów offline nie oznacza zweryfikowanego COP. Algorytm i wersja pozostają
+bez zmian; nowe testy charakterystyki dokumentują nierozwiązane ograniczenia.
+
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.
