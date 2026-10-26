@@ -777,7 +777,7 @@ class AtlanticReadOnlyClient:
             self.discovery_summary["remaining_requests"] = 0
             return
         if probe.key == "catalogue":
-            self._discovery_requested_ids = set(discovery_api.CORE_IDS) | extra_ids
+            self._discovery_requested_ids = set(discovery_api.CORE_IDS)
             self._discovery_queue = discovery_api.build_plan(
                 devices, self._setup_id, extra_ids, datetime.now(timezone.utc))
         self.discovery_summary["remaining_requests"] = len(self._discovery_queue)

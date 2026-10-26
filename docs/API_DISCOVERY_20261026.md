@@ -190,3 +190,24 @@ kandydatów, ale bezpośrednie zapytanie z rozszerzoną listą zakończyło się
 interfejsu i generatora. Kolejna seria odpytuje zatem wyłącznie wcześniejsze,
 przejrzane `CORE_IDS`, które na tym koncie wcześniej zwróciły 200. Kandydaci
 pozostają widoczni jako metadane katalogu; ich wartości nie są pobierane.
+
+## Czwarty etap: minimalny kształt przechwyconego żądania
+
+Trzeci raport potwierdził 200 dla odczytów `CORE_IDS`, ale `Daily` i `Monthly`
+nadal dały 400 ze wskazaniem `periodicity`. Hipoteza wielkości liter została
+odrzucona. Publiczny kod klientów oraz raport z niezależnej instalacji dokumentują
+HTTP 200 dla `GET /magellan/setups/{id}/consumptions?periodicity=daily`, bez dat
+i bez `deviceId`:
+
+- https://github.com/gduteil/cozytouch/blob/main/custom_components/cozytouch/account.py
+- https://github.com/nekonyuu/home-dashboard/blob/main/docs/phase0-findings.md
+
+Następna seria wykorzystuje więc trzy pojedyncze, minimalne żądania: setup daily,
+setup monthly oraz device monthly. Wartości `periodicity` wracają do małych liter.
+Nie wysyłamy `fromDate`, `toDate` ani `deviceId`. Jest to test zachowania backendu,
+które przeczy oznaczeniom required w OpenAPI Atlantic; wynik na tym koncie nadal
+wymaga potwierdzenia. Nie wykonujemy wariantów ani automatycznych powtórek.
+
+Lista `missing_requested_ids` odnosi się odtąd tylko do faktycznie odpytanych
+`CORE_IDS`. Kandydaci katalogowi nadal są metadanymi i nie są przedstawiani jako
+brakujące odpowiedzi urządzenia.

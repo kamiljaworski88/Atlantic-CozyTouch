@@ -28,7 +28,7 @@ class DiscoverySession(Session):
         self.raw = raw
 
     def get(self, url, **kwargs):
-        if "productmodels" not in url and "capabilities=" not in url and "fromDate=" not in url:
+        if "productmodels" not in url and "capabilities=" not in url and "/consumptions?periodicity=" not in url:
             return super().get(url, **kwargs)
         self.calls.append(("GET", url, kwargs))
         if "productmodels" in url:
@@ -63,24 +63,45 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(json.dumps(devices, sort_keys=True), original)
         self.assertFalse(client.discovery_summary["cop_ready"])
         self.assertEqual(len(client.discovery_summary["results"]), 6)
+        self.assertNotIn(999, client.discovery_summary["results"]
+                         ["capabilities_interfejs"]["missing_requested_ids"])
         report = json.dumps(client.discovery_summary)
         for secret in ("SECRET_SERIAL", "SECRET_ID", "PRIVATE_UNREVIEWED_VALUE", "fake@example.invalid", "Bearer"):
             self.assertNotIn(secret, report)
-        self.assertEqual(client.discovery_summary["results"]["device_monthly"]["rows"][0]["produced_quantity_raw"], 76)
+        self.assertEqual(client.discovery_summary["results"]["setup_daily_minimal"]["rows"][0]["produced_quantity_raw"], 76)
         for method, url, options in session.calls[2:]:
             self.assertEqual(method, "GET")
             self.assertEqual(urlsplit(url).netloc, "apis.groupe-atlantic.com")
             self.assertFalse(options["allow_redirects"])
         self.assertEqual(client._discovery_urls, frozenset())
 
-    async def test_dates_and_device_filter_are_bounded_and_explicit(self):
-        plan = d.build_plan([{"id": "9", "reported_capability_ids": [91,112]}], 123, set(),
-                            datetime(2026, 1, 20, tzinfo=timezone.utc))
-        query = parse_qs(urlsplit(plan[-1].url).query)
-        self.assertEqual(query["fromDate"], ["2025-12-01T00:00:00Z"])
-        self.assertEqual(query["toDate"], ["2026-01-20T00:00:00Z"])
-        self.assertEqual(query["deviceId"], ["9"])
-        self.assertEqual(query["periodicity"], ["Monthly"])
+    async def test_minimal_consumption_queries_match_observed_wire_shape(self):
+        plan = d.build_plan(
+            [{"id": "9", "reported_capability_ids": [91, 112]}],
+            123, set(), datetime(2026, 1, 20, tzinfo=timezone.utc),
+        )
+        history = {
+            probe.key: urlsplit(probe.url)
+            for probe in plan if "consumptions" in probe.url
+        }
+        self.assertEqual(set(history), {
+            "setup_daily_minimal", "setup_monthly_minimal",
+            "device_monthly_minimal",
+        })
+        self.assertEqual(
+            parse_qs(history["setup_daily_minimal"].query),
+            {"periodicity": ["daily"]},
+        )
+        self.assertEqual(
+            parse_qs(history["setup_monthly_minimal"].query),
+            {"periodicity": ["monthly"]},
+        )
+        self.assertEqual(
+            parse_qs(history["device_monthly_minimal"].query),
+            {"periodicity": ["monthly"]},
+        )
+        self.assertNotIn("fromDate", history["setup_daily_minimal"].query)
+        self.assertNotIn("deviceId", history["setup_daily_minimal"].query)
 
     async def test_catalogue_candidates_stay_metadata_only(self):
         plan = d.build_plan(
@@ -92,20 +113,6 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(requested, set(d.CORE_IDS))
         self.assertNotIn(900, requested)
 
-    async def test_periodicity_uses_case_sensitive_wcf_enum_hypothesis(self):
-        plan = d.build_plan(
-            [{"id": "9", "reported_capability_ids": [91, 112]}],
-            123, set(), datetime(2026, 1, 20, tzinfo=timezone.utc),
-        )
-        history = {
-            probe.key: parse_qs(urlsplit(probe.url).query)
-            for probe in plan if "consumptions" in probe.url
-        }
-        self.assertEqual(history["device_monthly"]["periodicity"], ["Monthly"])
-        self.assertEqual(history["device_daily"]["periodicity"], ["Daily"])
-        self.assertEqual(
-            history["setup_monthly_filtered"]["periodicity"], ["Monthly"]
-        )
     async def test_urls_not_authorized_outside_single_internal_probe(self):
         session = DiscoverySession()
         client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
@@ -185,7 +192,7 @@ class DiscoveryParsing(unittest.TestCase):
 
 class ErrorEvidence(unittest.IsolatedAsyncioTestCase):
     async def test_400_extracts_clues_without_secrets_or_extra_requests(self):
-        raw = b'{"message":"Invalid fromDate format yyyy-MM-dd for secret@example.invalid token=SECRET_SERIAL deviceId=123456"}'
+        raw = b'{"message":"Invalid periodicity for secret@example.invalid token=SECRET_SERIAL deviceId=123456"}'
         session = DiscoverySession(status=400, raw=raw)
         client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
         devices = await client.async_read()
@@ -193,10 +200,10 @@ class ErrorEvidence(unittest.IsolatedAsyncioTestCase):
             await client.async_probe_energy_discovery(devices)
         self.assertEqual(len(client.discovery_summary["results"]), 6)
         self.assertEqual(len(session.calls), 8)  # Login/setup plus six probes.
-        result = client.discovery_summary["results"]["device_monthly"]
+        result = client.discovery_summary["results"]["setup_daily_minimal"]
         self.assertEqual(result["http_status"], 400)
-        self.assertEqual(result["error_evidence"]["format_mentions"], ["yyyy-MM-dd"])
-        self.assertIn("fromDate", result["error_evidence"]["parameter_mentions"])
+        self.assertEqual(result["error_evidence"]["format_mentions"], [])
+        self.assertIn("periodicity", result["error_evidence"]["parameter_mentions"])
         self.assertFalse(result["error_evidence"]["cause_confirmed"])
         report = json.dumps(client.discovery_summary)
         for secret in ("secret@example.invalid", "SECRET_SERIAL", "123456", "token="):

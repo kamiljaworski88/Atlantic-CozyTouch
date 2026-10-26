@@ -1,7 +1,6 @@
 """Bounded evidence collection; never a heat meter or device command."""
 from __future__ import annotations
 from dataclasses import dataclass
-from datetime import datetime, timezone
 from math import isfinite
 import re
 from urllib.parse import urlencode
@@ -117,7 +116,7 @@ class Probe:
     setup_id: int | None = None
 
 
-def build_plan(devices, setup_id, extra_ids, now):
+def build_plan(devices, setup_id, _extra_ids, _now):
     selected = targets(devices)
     if not selected:
         return []
@@ -130,22 +129,19 @@ def build_plan(devices, setup_id, extra_ids, now):
     plan = [Probe("capabilities_" + role, API_ORIGIN + "/magellan/capabilities/?" + urlencode({
         "deviceid": device_id, "capabilities": ";".join(map(str, ids))}), device_id)
         for role, device_id in selected]
-    now = now.astimezone(timezone.utc)
-    start = now.replace(day=1, hour=0, minute=0, second=0, microsecond=0)
-    start = start.replace(year=start.year-1, month=12) if start.month == 1 else start.replace(month=start.month-1)
-    # OpenAPI declares strings, NOT their format: ISO UTC is a documented hypothesis.
-    dates = {"fromDate": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
-             "toDate": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
     interface = selected[0][1]
-    # The WCF backend named periodicity in every HTTP 400 response. Test the
-    # conventional case-sensitive .NET enum spelling while changing no other
-    # request field, so the account result remains interpretable.
-    for key, period in (("monthly", "Monthly"), ("daily", "Daily")):
-        plan.append(Probe("device_" + key, API_ORIGIN + f"/magellan/devices/{interface}/consumptions?"
-                          + urlencode({"periodicity": period, **dates}), interface))
+    # Captured clients and an independent installation use these minimal,
+    # lowercase WCF requests successfully. OpenAPI marks date and deviceId as
+    # required, but both ISO dates and enum-case changes returned HTTP 400 on
+    # this account. Test the observed wire shape without automatic variants.
     if type(setup_id) is int and 0 < setup_id <= 999999999999999999:
-        plan.append(Probe("setup_monthly_filtered", API_ORIGIN + f"/magellan/setups/{setup_id}/consumptions?"
-                          + urlencode({"periodicity": "Monthly", **dates, "deviceId": interface}), interface, setup_id))
+        for key, period in (("setup_daily_minimal", "daily"),
+                            ("setup_monthly_minimal", "monthly")):
+            plan.append(Probe(key, API_ORIGIN + f"/magellan/setups/{setup_id}/consumptions?"
+                              + urlencode({"periodicity": period}), setup_id=setup_id))
+    plan.append(Probe("device_monthly_minimal",
+                      API_ORIGIN + f"/magellan/devices/{interface}/consumptions?"
+                      + urlencode({"periodicity": "monthly"}), interface))
     return plan
 
 
