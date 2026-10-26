@@ -61,3 +61,8 @@ Testy bez połączenia z producentem obejmują: odmowę wysłania niedozwolonego
 
 
 Audyt 26.10.2026: blokada `params` w transporcie, brak GET dziennej historii bez tokenu, respektowanie długiego Retry-After. Limity liczby obiektów po JSON nie są limitem rozmiaru pobieranej odpowiedzi. Szczegóły w INDEPENDENT_AUDIT_20261026.md.
+
+
+## Opcjonalne badanie API 26.10.2026
+
+Po explicit opt-in: jeden dodatkowy GET na cykl, maksymalnie sześć na reload. Nowa trasa katalogu ProductModels oraz filtrowane capability i historie z datami działają wyłącznie na oficjalnym hoście. Limit body 1 MB przed JSON. Szczegóły wyjść sieciowych, prywatności i zatrzymania na 401/429: [API_DISCOVERY_20261026.md](API_DISCOVERY_20261026.md). Badanie nie zmienia danych COP ani pompy.

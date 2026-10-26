@@ -1,0 +1,1134 @@
+{
+  "retrieved_on": "2026-10-26",
+  "source": "official Atlantic public developer portal",
+  "authenticated_device_requests_performed": false,
+  "apis": [
+    {
+      "name": "Devices",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/158f3299-b2cc-474e-a3e2-17de3efec2f3/swagger",
+      "saved_spec_sha256": "9ec091a8e660716ab0705209d4fc719fb368bbfeed896f451a8255db86ae0693",
+      "version": "1.92",
+      "declared_base": "/magellan/devices/1.92",
+      "selected_get_operations": {
+        "/{id}/consumptions": {
+          "operationId": "GacomaWcfService.DeviceService.GetConsumptions",
+          "parameters": [
+            {
+              "name": "uniqId",
+              "in": "header",
+              "description": "Correlation Id use to track a call from request to server response.",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "id",
+              "in": "path",
+              "description": "Device Id (integer)",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "periodicity",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "fromDate",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "toDate",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Get list of consumption for the device by periodicity",
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/GacomaWcfService.Consumption"
+                }
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {
+        "GacomaWcfService.Consumption": {
+          "type": "object",
+          "properties": {
+            "consumptionPeriods": {
+              "type": "array",
+              "description": "List of consumption details",
+              "items": {
+                "$ref": "#/definitions/GacomaWcfService.ConsumptionDetail"
+              }
+            },
+            "serialNumber": {
+              "type": "string",
+              "description": "serialNumber's technical identifier"
+            },
+            "deviceId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "Device's technical identifier"
+            },
+            "category": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Category of consumption\r\n\r\n    Undefined = 0 \r\n    Heating = 1 \r\n    DHW = 2 \r\n    Cooling = 3 \r\n    Other = 10 \r\n"
+            },
+            "type": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Resource's type consumed\r\n\r\n    Undefined = 0 \r\n    Electricity = 1 \r\n    Gas = 2 \r\n    Oil = 3 \r\n    Water = 4 \r\n    Other = 10 \r\n"
+            },
+            "unit": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Unit of quantity consumed\r\n\r\n    Undefined = 0 \r\n    KiloWattHour = 1 \r\n    Liter = 2 \r\n    Other = 10 \r\n"
+            },
+            "currency": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Cost currency"
+            },
+            "deviceUrl": {
+              "type": "string",
+              "description": "device url"
+            },
+            "zoneId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "zoneId"
+            }
+          },
+          "format": "GacomaWcfService.Consumption",
+          "description": "Consumption with list of period"
+        },
+        "GacomaWcfService.ConsumptionDetail": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "integer",
+              "format": "enum",
+              "description": "mode"
+            },
+            "consumedQuantity": {
+              "type": "number",
+              "format": "float",
+              "description": "Quantity of resource consumed"
+            },
+            "cost": {
+              "type": "number",
+              "format": "float",
+              "description": "The cost of the resource consumed"
+            },
+            "date": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Date"
+            },
+            "producedQuantity": {
+              "type": "number",
+              "format": "decimal",
+              "description": "Produced quantity of resource consumed"
+            },
+            "profil": {
+              "type": "integer",
+              "format": "enum",
+              "description": "profil"
+            }
+          },
+          "format": "GacomaWcfService.ConsumptionDetail",
+          "description": "Consumption period element"
+        }
+      }
+    },
+    {
+      "name": "Setups",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/04ec0d9c-fc56-4566-ab28-b76d44ec42d1/swagger",
+      "saved_spec_sha256": "bb973ba331b628130f4cd72a27bc5c6705c0f4f5d337481d10f5aad06b09ce7a",
+      "version": "1.9",
+      "declared_base": "/magellan/setups/1.9",
+      "selected_get_operations": {
+        "/{id}/consumptions": {
+          "operationId": "GacomaWcfService.SetupService.GetConsumptions",
+          "parameters": [
+            {
+              "name": "uniqId",
+              "in": "header",
+              "description": "Correlation Id use to track a call from request to server response.",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "id",
+              "in": "path",
+              "description": "Setup Id (integer)",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "periodicity",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "fromDate",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "toDate",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "deviceId",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Get list of consumption for setup's devices by periodicity",
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/GacomaWcfService.Consumption"
+                }
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {
+        "GacomaWcfService.Consumption": {
+          "type": "object",
+          "properties": {
+            "consumptionPeriods": {
+              "type": "array",
+              "description": "List of consumption details",
+              "items": {
+                "$ref": "#/definitions/GacomaWcfService.ConsumptionDetail"
+              }
+            },
+            "serialNumber": {
+              "type": "string",
+              "description": "serialNumber's technical identifier"
+            },
+            "deviceId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "Device's technical identifier"
+            },
+            "category": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Category of consumption\r\n\r\n    Undefined = 0 \r\n    Heating = 1 \r\n    DHW = 2 \r\n    Cooling = 3 \r\n    Other = 10 \r\n"
+            },
+            "type": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Resource's type consumed\r\n\r\n    Undefined = 0 \r\n    Electricity = 1 \r\n    Gas = 2 \r\n    Oil = 3 \r\n    Water = 4 \r\n    Other = 10 \r\n"
+            },
+            "unit": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Unit of quantity consumed\r\n\r\n    Undefined = 0 \r\n    KiloWattHour = 1 \r\n    Liter = 2 \r\n    Other = 10 \r\n"
+            },
+            "currency": {
+              "type": "integer",
+              "format": "enum",
+              "description": "Cost currency"
+            },
+            "deviceUrl": {
+              "type": "string",
+              "description": "device url"
+            },
+            "zoneId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "zoneId"
+            }
+          },
+          "format": "GacomaWcfService.Consumption",
+          "description": "Consumption with list of period"
+        },
+        "GacomaWcfService.ConsumptionDetail": {
+          "type": "object",
+          "properties": {
+            "mode": {
+              "type": "integer",
+              "format": "enum",
+              "description": "mode"
+            },
+            "consumedQuantity": {
+              "type": "number",
+              "format": "float",
+              "description": "Quantity of resource consumed"
+            },
+            "cost": {
+              "type": "number",
+              "format": "float",
+              "description": "The cost of the resource consumed"
+            },
+            "date": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Date"
+            },
+            "producedQuantity": {
+              "type": "number",
+              "format": "decimal",
+              "description": "Produced quantity of resource consumed"
+            },
+            "profil": {
+              "type": "integer",
+              "format": "enum",
+              "description": "profil"
+            }
+          },
+          "format": "GacomaWcfService.ConsumptionDetail",
+          "description": "Consumption period element"
+        }
+      }
+    },
+    {
+      "name": "ProductModels",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/cf6d6569-5d4c-4524-9dcf-73137ce42564/swagger",
+      "saved_spec_sha256": "c534c9cbc56a9c4b4738379eff187519635be047d982fa3c6f3e0c623a21e5b8",
+      "version": "1.9",
+      "declared_base": "/magellan/productmodels/1.9",
+      "selected_get_operations": {
+        "/capabilities": {
+          "operationId": "GacomaWcfService.ProductModelService.GetCapabilities",
+          "parameters": [
+            {
+              "name": "uniqId",
+              "in": "header",
+              "description": "Correlation Id use to track a call from request to server response.",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "productid",
+              "in": "query",
+              "description": "Product Id (integer)",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "familyid",
+              "in": "query",
+              "description": "Family Id (integer)",
+              "required": false,
+              "type": "string"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Get list of capabilities",
+              "schema": {
+                "type": "array",
+                "items": {
+                  "$ref": "#/definitions/GacomaWcfService.Capability"
+                }
+              }
+            }
+          }
+        },
+        "/capabilities/{id}": {
+          "operationId": "GacomaWcfService.ProductModelService.GetCapability",
+          "parameters": [
+            {
+              "name": "uniqId",
+              "in": "header",
+              "description": "Correlation Id use to track a call from request to server response.",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "id",
+              "in": "path",
+              "description": "Capability Id (integer)",
+              "required": true,
+              "type": "string"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Get a capability",
+              "schema": {
+                "$ref": "#/definitions/GacomaWcfService.Capability"
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {}
+    },
+    {
+      "name": "Capabilities",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/940512d4-587e-4935-b741-f216f1b189be/swagger",
+      "saved_spec_sha256": "4bb53885dac10ee72aa8fb1176a16a1d93b72a4a5771277e05a18a5b3226d118",
+      "version": "1.9",
+      "declared_base": "/magellan/capabilities/1.9",
+      "selected_get_operations": {},
+      "selected_schemas": {
+        "GacomaWcfService.CapabilityValue": {
+          "type": "object",
+          "properties": {
+            "modificationDate": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Date and time of last modification"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for a capability"
+            },
+            "capabilityId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "Id of the capability"
+            }
+          },
+          "format": "GacomaWcfService.CapabilityValue",
+          "description": "Capability's value"
+        }
+      }
+    },
+    {
+      "name": "Monitors",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/fee527e0-d1f8-4ab7-876b-45f4850a24b8/swagger",
+      "saved_spec_sha256": "9eea7b5f60cd8d6d0a4d4b14fb7181b54a166c75e207e6cef2cda812bdb1359e",
+      "version": "1.9",
+      "declared_base": "/magellan/monitors/1.9",
+      "selected_get_operations": {
+        "/healthcheck": {
+          "operationId": "GacomaWcfService.MonitorService.GetHealthCheck",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "Health Check server informations",
+              "schema": {
+                "$ref": "#/definitions/GacomaWcfService.HealthCheck"
+              }
+            }
+          }
+        },
+        "/maintenancestatus": {
+          "operationId": "GacomaWcfService.MonitorService.GetMaintenanceStatus",
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "Monitor Status returned",
+              "schema": {
+                "$ref": "#/definitions/GacomaWcfService.Monitor"
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {}
+    },
+    {
+      "name": "Technilog",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/edff2bdc-e22b-45c3-adb2-d11461e3ad67/swagger",
+      "saved_spec_sha256": "ac8c265a28d4f5211e6757be9b4d4c88a328f6fed3b6f21f2ca0be0f2bc7cb21",
+      "version": "1.9",
+      "declared_base": "/magellan/technilog/1.9",
+      "selected_get_operations": {},
+      "selected_schemas": {}
+    },
+    {
+      "name": "Ecocoaching",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/f2c34c4d-85c5-4a4e-82a7-84ae590546b9/swagger",
+      "saved_spec_sha256": "c351333767d01eaf75cb111bf9c7f2b75ca8c00e3b9ac7c010ae910b47e3c0cd",
+      "version": "1.0",
+      "declared_base": [
+        {
+          "url": "https://apis.groupe-atlantic.com/magellan/ecocoaching/1.0"
+        }
+      ],
+      "selected_get_operations": {
+        "/": {
+          "operationId": null,
+          "parameters": [],
+          "responses": {
+            "200": {
+              "description": "OK",
+              "content": {
+                "text/plain": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AdviceGroup"
+                    }
+                  }
+                },
+                "application/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AdviceGroup"
+                    }
+                  }
+                },
+                "text/json": {
+                  "schema": {
+                    "type": "array",
+                    "items": {
+                      "$ref": "#/components/schemas/AdviceGroup"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {}
+    },
+    {
+      "name": "BFF_Ecocozy",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/e298764e-0a07-4cfa-ab77-771cd344a045/swagger",
+      "saved_spec_sha256": "6493546a55b01e9e5ea9a749703c0d3811fb955763f2f94151d61b5b4d907cd9",
+      "version": "1",
+      "declared_base": [
+        {
+          "url": "https://apis.groupe-atlantic.com/ecocozy/1"
+        }
+      ],
+      "selected_get_operations": {
+        "/v1/setups/{id}/consumption": {
+          "operationId": "SetupsConsumptionController_getOverviewConsumption_v1",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "description": "The ID of the setup",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "number"
+              }
+            },
+            {
+              "name": "lang",
+              "in": "query",
+              "description": "Language code",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "example": "fr",
+                "default": "en"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/OverviewConsumptionResponse"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 400,
+                      "message": "Bad request"
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 401,
+                      "message": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 403,
+                      "message": "Forbidden"
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Internal Server Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 500,
+                      "message": "Internal server error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/v1/setups/{id}/consumption/energy-mix": {
+          "operationId": "SetupsConsumptionController_getSetupEnergyMix_v1",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "description": "The ID of the setup",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "number"
+              }
+            },
+            {
+              "name": "startDate",
+              "in": "query",
+              "description": "The start date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "endDate",
+              "in": "query",
+              "description": "The end date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "granularity",
+              "in": "query",
+              "description": "The granularity of the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "daily",
+                  "monthly",
+                  "yearly"
+                ]
+              }
+            },
+            {
+              "name": "lang",
+              "in": "query",
+              "description": "Language code",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "example": "fr",
+                "default": "en"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "$ref": "#/components/schemas/SetupEnergyMixResponse"
+                  }
+                }
+              }
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 400,
+                      "message": "Bad request"
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 401,
+                      "message": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 403,
+                      "message": "Forbidden"
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Internal Server Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 500,
+                      "message": "Internal server error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/v1/setups/{id}/consumption/ranking-equipment": {
+          "operationId": "SetupsConsumptionController_getSetupEquipmentRanking_v1",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "description": "The ID of the setup",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "number"
+              }
+            },
+            {
+              "name": "startDate",
+              "in": "query",
+              "description": "The start date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "endDate",
+              "in": "query",
+              "description": "The end date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "granularity",
+              "in": "query",
+              "description": "The granularity of the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "daily",
+                  "monthly",
+                  "yearly"
+                ]
+              }
+            },
+            {
+              "name": "lang",
+              "in": "query",
+              "description": "Language code",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "example": "fr",
+                "default": "en"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": ""
+            },
+            "400": {
+              "description": "Bad Request",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 400,
+                      "message": "Bad request"
+                    }
+                  }
+                }
+              }
+            },
+            "401": {
+              "description": "Unauthorized",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 401,
+                      "message": "Unauthorized"
+                    }
+                  }
+                }
+              }
+            },
+            "403": {
+              "description": "Forbidden",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 403,
+                      "message": "Forbidden"
+                    }
+                  }
+                }
+              }
+            },
+            "500": {
+              "description": "Internal Server Error",
+              "content": {
+                "application/json": {
+                  "schema": {
+                    "example": {
+                      "statusCode": 500,
+                      "message": "Internal server error"
+                    }
+                  }
+                }
+              }
+            }
+          }
+        },
+        "/v1/service-containers/{id}/consumption/energy-mix": {
+          "operationId": "ServiceContainerConsumptionController_getServiceContainerEnergyMix_v1",
+          "parameters": [
+            {
+              "name": "id",
+              "in": "path",
+              "description": "The ID of the service container",
+              "required": true,
+              "style": "simple",
+              "explode": false,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "startDate",
+              "in": "query",
+              "description": "The start date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "endDate",
+              "in": "query",
+              "description": "The end date for the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string"
+              }
+            },
+            {
+              "name": "granularity",
+              "in": "query",
+              "description": "The granularity of the energy mix data",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "enum": [
+                  "daily",
+                  "monthly",
+                  "yearly"
+                ]
+              }
+            },
+            {
+              "name": "lang",
+              "in": "query",
+              "description": "Language code",
+              "required": false,
+              "style": "form",
+              "explode": true,
+              "schema": {
+                "type": "string",
+                "example": "fr",
+                "default": "en"
+              }
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": ""
+            }
+          }
+        }
+      },
+      "selected_schemas": {
+        "EnergyMixConsumptionResponse": {
+          "required": [
+            "categories",
+            "total",
+            "values"
+          ],
+          "type": "object",
+          "properties": {
+            "categories": {
+              "type": "array",
+              "description": "The categories of energy sources.",
+              "example": [
+                "Electric",
+                "Gas"
+              ],
+              "items": {
+                "type": "string"
+              }
+            },
+            "total": {
+              "type": "number",
+              "description": "The total consumption value in kWh.",
+              "example": 2500
+            },
+            "values": {
+              "type": "array",
+              "description": "An array of energy mix consumption data.",
+              "items": {
+                "$ref": "#/components/schemas/EnergyMixConsumptionDataResponse"
+              }
+            }
+          }
+        },
+        "EnergyMixConsumptionDataResponse": {
+          "required": [
+            "kwh",
+            "period",
+            "total"
+          ],
+          "type": "object",
+          "properties": {
+            "period": {
+              "type": "string",
+              "description": "The time period for the energy mix data (e.g., month, year).",
+              "example": "2024-01"
+            },
+            "kwh": {
+              "type": "array",
+              "description": "An array of consumption values in kWh for different energy sources.",
+              "example": [
+                120,
+                80,
+                50
+              ],
+              "items": {
+                "type": "number"
+              }
+            },
+            "total": {
+              "type": "number",
+              "description": "The total consumption value in kWh.",
+              "example": 250
+            }
+          }
+        },
+        "MetaConsumptionResponse": {
+          "required": [
+            "endDate",
+            "granularity",
+            "previousPeriod",
+            "setupId",
+            "setupName",
+            "startDate"
+          ],
+          "type": "object",
+          "properties": {
+            "setupId": {
+              "type": "number",
+              "description": "The unique identifier of the setup.",
+              "example": 123
+            },
+            "setupName": {
+              "type": "string",
+              "description": "The name of the setup.",
+              "example": "Main Setup"
+            },
+            "startDate": {
+              "type": "string",
+              "description": "The start of the period. Format: YYYY-MM-DD for daily, YYYY-MM for monthly, or YYYY for yearly granularity.",
+              "example": "1672531200000"
+            },
+            "endDate": {
+              "type": "string",
+              "description": "The end of the period. Format: YYYY-MM-DD for daily, YYYY-MM for monthly, or YYYY for yearly granularity.",
+              "example": "1675123200000"
+            },
+            "granularity": {
+              "type": "string",
+              "description": "The granularity of the consumption data.",
+              "example": "day",
+              "enum": [
+                "daily",
+                "monthly",
+                "yearly"
+              ]
+            },
+            "previousPeriod": {
+              "description": "An object containing startDate and endDate for the previous period.",
+              "allOf": [
+                {
+                  "$ref": "#/components/schemas/PeriodConsumptionResponse"
+                }
+              ]
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "Setups_v3",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/28a286e9-2a94-4375-b659-f2089587e375/swagger",
+      "saved_spec_sha256": "4428fd60e9bbe6b96f386bfc3ce78ca24afb2e026cca171e5d82933fdb4e3461",
+      "version": "1.0",
+      "declared_base": [
+        {
+          "url": "https://apis.groupe-atlantic.com/magellan/v3/setups/1.0"
+        }
+      ],
+      "selected_get_operations": {},
+      "selected_schemas": {}
+    },
+    {
+      "name": "Cozytouch",
+      "source_url": "https://apis.groupe-atlantic.com/api/am/devportal/v3/apis/54c5bf5b-22c6-42b9-9485-eb52b489badb/swagger",
+      "saved_spec_sha256": "398ff1ae0869e2a2b92291ea73055651b6f8b30f7b6e327d36ac309ea30affb3",
+      "version": "1.9",
+      "declared_base": "/magellan/cozytouch/1.9",
+      "selected_get_operations": {
+        "/setupviewv2": {
+          "operationId": "GacomaWcfService.CozyTouchService.GetSetupViewV2",
+          "parameters": [
+            {
+              "name": "uniqId",
+              "in": "header",
+              "description": "Correlation Id use to track a call from request to server response.",
+              "required": false,
+              "type": "string"
+            },
+            {
+              "name": "setupid",
+              "in": "query",
+              "required": true,
+              "type": "string"
+            },
+            {
+              "name": "showTimer",
+              "in": "query",
+              "required": false,
+              "type": "boolean"
+            }
+          ],
+          "responses": {
+            "200": {
+              "description": "Setup view with all objects",
+              "schema": {
+                "$ref": "#/definitions/GacomaWcfService.SetupView"
+              }
+            }
+          }
+        }
+      },
+      "selected_schemas": {
+        "GacomaWcfService.CapabilityValue": {
+          "type": "object",
+          "properties": {
+            "modificationDate": {
+              "type": "integer",
+              "format": "int64",
+              "description": "Date and time of last modification"
+            },
+            "value": {
+              "type": "string",
+              "description": "Value for a capability"
+            },
+            "capabilityId": {
+              "type": "integer",
+              "format": "int32",
+              "description": "Id of the capability"
+            }
+          },
+          "format": "GacomaWcfService.CapabilityValue",
+          "description": "Capability's value"
+        }
+      }
+    }
+  ]
+}

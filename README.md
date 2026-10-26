@@ -12,6 +12,14 @@ Ten sam iloraz 0,491/0,052 = 9,44 może nadal zostać przyjęty po 12 minutach.
 218 testów offline nie oznacza zweryfikowanego COP. Algorytm i wersja pozostają
 bez zmian; nowe testy charakterystyki dokumentują nierozwiązane ograniczenia.
 
+## Opcjonalne badanie API w Home Assistant
+
+[Instrukcja i ustalenia reverse engineeringu](docs/API_DISCOVERY_20261026.md):
+bezpośrednio pobrane specyfikacje producenta ujawniły parametry dat historii,
+filtr urządzenia oraz filtrowany GET capability. Nowa opcja jest domyślnie
+wyłączona, wykonuje do sześciu odczytów i pokazuje wyniki w osobnej encji.
+Nie odblokowuje COP ani sterowania pompą.
+
 ## Bezpieczeństwo
 
 - Brak sterowania pompą: **nie ma** encji typu `climate`, `number`, `switch`, `select`, `button` ani usług zapisujących ustawienia.

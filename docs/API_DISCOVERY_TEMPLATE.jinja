@@ -1,0 +1,16 @@
+{# Tylko jawnie wybrane atrybuty encji badania; bez entity/device IDs. #}
+{% set found = namespace(ids=[]) %}
+{% for e in integration_entities('atlantic_cozytouch') %}
+  {% if 'badanie źródeł API' in (state_attr(e, 'friendly_name') or '') %}
+    {% set found.ids = found.ids + [e] %}
+  {% endif %}
+{% endfor %}
+{% if found.ids | count == 1 %}
+  {% set e = found.ids[0] %}
+  {{ {'state': states(e),
+      'remaining_requests': state_attr(e, 'remaining_requests'),
+      'cop_ready': state_attr(e, 'cop_ready'),
+      'results': state_attr(e, 'results')} | to_json(pretty_print=True) }}
+{% else %}
+  Brak jednej jednoznacznej encji badania API.
+{% endif %}

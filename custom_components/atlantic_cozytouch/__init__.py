@@ -14,7 +14,7 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers.storage import Store
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
-from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
+from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP, OPT_API_DISCOVERY
 from .compressor import CompressorMonitor
 from .cop_snapshot import HydraulicCopEstimator
 from .energy_validation import EnergyValidationMonitor
@@ -83,6 +83,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
                 # Debounced disk write: preserve accepted intervals across
                 # normal restarts without writing every poll.
                 cop_store.async_delay_save(cop_monitor.export_accumulated, 60)
+            if entry.options.get(OPT_API_DISCOVERY) is True:
+                await client.async_probe_energy_discovery(devices)
+                coordinator.atlantic_api_discovery = client.discovery_summary
             coordinator.atlantic_last_success_at = observed_at
             return devices
         except AtlanticAuthError as exc:
@@ -114,6 +117,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.atlantic_monthly_energy = dict(client.monthly_energy_summary)
     coordinator.atlantic_device_energy = dict(client.device_energy_summary)
     coordinator.atlantic_daily_energy = {}
+    coordinator.atlantic_api_discovery = {"state": "wylaczone", "results": {}, "cop_ready": False}
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)

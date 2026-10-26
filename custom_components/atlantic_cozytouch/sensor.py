@@ -71,6 +71,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
 
     # Preserve the existing diagnostic unique_id across upgrades.
     async_add_entities([
+        AtlanticApiDiscoverySensor(coordinator, entry.entry_id),
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
@@ -825,3 +826,23 @@ class AtlanticHydraulicCopSensor(CoordinatorEntity, SensorEntity):
             "potwierdzony_pomiar_cop": False,
             "do_rozliczen_energii": False,
         }
+
+
+class AtlanticApiDiscoverySensor(CoordinatorEntity, SensorEntity):
+    """Local bounded numeric research evidence; no device identifiers or secrets."""
+    _attr_has_entity_name = True
+    _attr_name = "Atlantic · badanie źródeł API"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:flask-outline"
+
+    def __init__(self, coordinator, entry_id):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_api_discovery"
+
+    @property
+    def native_value(self):
+        return getattr(self.coordinator, "atlantic_api_discovery", {}).get("state", "wylaczone")
+
+    @property
+    def extra_state_attributes(self):
+        return getattr(self.coordinator, "atlantic_api_discovery", {})

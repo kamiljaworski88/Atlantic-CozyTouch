@@ -9,6 +9,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta, timezone
 from email.utils import parsedate_to_datetime
 import logging
+import json
 from math import isfinite
 
 import aiohttp
@@ -20,6 +21,7 @@ from .const import (
     READ_PATH,
     TOKEN_PATH,
 )
+from . import api_discovery as discovery_api
 from .readings import extract_devices
 from .discovery import compressor_host_devices
 from .consumption_probe import parse_setup_id, summarize_consumptions
@@ -56,6 +58,10 @@ class AtlanticReadOnlyClient:
     """Read-only vendor cloud client with a deny-by-default HTTP boundary."""
 
     def __init__(self, session: aiohttp.ClientSession, username: str, password: str) -> None:
+        self._discovery_urls: frozenset[str] = frozenset()
+        self._discovery_queue = None
+        self._discovery_requested_ids = set(discovery_api.CORE_IDS)
+        self.discovery_summary = {"state": "wylaczone", "results": {}, "cop_ready": False}
         self._session = session
         self._username = username.strip()
         self._password = password
@@ -114,7 +120,8 @@ class AtlanticReadOnlyClient:
         )
         if ((method, url) not in _ALLOWED_HTTP_OPERATIONS
                 and not consumption_allowed and not monthly_allowed
-                and not capability_allowed and not device_energy_allowed):
+                and not capability_allowed and not device_energy_allowed
+                and not (method == "GET" and url in self._discovery_urls)):
             raise AtlanticError("Blocked operation outside read-only HTTP allowlist")
         if {"ssl", "proxy", "proxy_auth", "auth", "allow_redirects", "timeout", "params"} & kwargs.keys():
             raise AtlanticError("Forbidden request transport override")
@@ -292,6 +299,9 @@ class AtlanticReadOnlyClient:
         setup_id = parse_setup_id(payload)
         if setup_id != self._setup_id:
             self._setup_id = setup_id
+            self._discovery_queue = None
+            self._discovery_urls = frozenset()
+            self.discovery_summary = {"state": "oczekiwanie", "results": {}, "cop_ready": False}
             self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
             self._consumption_disabled = False
             self.consumption_summary = {"state": "nie_sprawdzono"}
@@ -674,3 +684,85 @@ class AtlanticReadOnlyClient:
         except (aiohttp.ClientError, TimeoutError, TypeError, ValueError,
                 OverflowError, AtlanticError):
             self.monthly_energy_summary = {"state": "blad_polaczenia"}
+
+
+    async def async_probe_energy_discovery(self, devices: list[dict]) -> None:
+        """Opt-in, one extra GET per poll, at most six per client/setup lifetime.
+
+        Only observed account devices; no arbitrary routes, refresh commands,
+        automatic retries, raw payload storage or energy/COP publication.
+        """
+        selected = discovery_api.targets(devices)
+        if not selected:
+            self.discovery_summary["state"] = "brak_jednoznacznej_pompy"
+            return
+        if self._discovery_queue is None:
+            self._discovery_queue = [discovery_api.Probe("catalogue", discovery_api.CATALOGUE_URL)]
+            self.discovery_summary = {"state": "w_trakcie", "results": {}, "cop_ready": False}
+        if not self._discovery_queue:
+            return
+        try:
+            self._ensure_not_throttled()
+        except AtlanticRateLimited:
+            self.discovery_summary["state"] = "limit_zapytan"
+            return
+        if self._token is None:
+            self.discovery_summary["state"] = "brak_autoryzacji"
+            return
+        probe = self._discovery_queue.pop(0)
+        own_ids = {identifier for _, identifier in selected}
+        if ((probe.target_id is not None and probe.target_id not in own_ids)
+                or (probe.setup_id is not None and probe.setup_id != self._setup_id)):
+            self._discovery_queue.clear()
+            self.discovery_summary["state"] = "zmiana_zrodla_przerwano"
+            return
+        self._discovery_urls = frozenset((probe.url,))
+        extra_ids = set()
+        stop = False
+        try:
+            async with self._request("GET", probe.url, headers={
+                "Authorization": "Bearer " + self._token, "Accept": "application/json",
+            }) as response:
+                status = response.status
+                if status == 429:
+                    self._note_rate_limited(response)
+                if status == 401:
+                    self._token = None
+                if status in (401, 429):
+                    stop = True
+                if status != 200:
+                    result = {"state": "blad_http", "http_status": status}
+                else:
+                    raw = bytearray()
+                    async for chunk in response.content.iter_chunked(65536):
+                        raw.extend(chunk)
+                        if len(raw) > discovery_api.MAX_BODY_BYTES:
+                            raise ValueError("body limit")
+                    payload = json.loads(raw)
+                    if probe.key == "catalogue":
+                        result, extra_ids = discovery_api.catalogue_summary(payload)
+                    elif probe.key.startswith("capabilities_"):
+                        reported = next((set(d.get("reported_capability_ids", []))
+                                         for d in devices if d["id"] == probe.target_id), set())
+                        result = discovery_api.capability_summary(payload, reported, self._discovery_requested_ids)
+                    else:
+                        result = discovery_api.history_summary(payload)
+                    result["http_status"] = 200
+        except (aiohttp.ClientError, TimeoutError, ValueError, TypeError,
+                OverflowError, RecursionError, AtlanticError):
+            result = {"state": "blad_odczytu_lub_formatu"}
+        finally:
+            self._discovery_urls = frozenset()
+        result["api_observed_at"] = datetime.now(timezone.utc).isoformat()
+        self.discovery_summary["results"][probe.key] = result
+        if stop:
+            self._discovery_queue.clear()
+            self.discovery_summary["state"] = "przerwano_401_lub_429"
+            return
+        if probe.key == "catalogue":
+            self._discovery_requested_ids = set(discovery_api.CORE_IDS) | extra_ids
+            self._discovery_queue = discovery_api.build_plan(
+                devices, self._setup_id, extra_ids, datetime.now(timezone.utc))
+        self.discovery_summary["remaining_requests"] = len(self._discovery_queue)
+        self.discovery_summary["state"] = (
+            "w_trakcie" if self._discovery_queue else "zakonczono_sprawdz_wyniki")

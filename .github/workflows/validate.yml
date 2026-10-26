@@ -43,6 +43,7 @@ jobs:
           for path in (
               "custom_components.atlantic_cozytouch",
               "custom_components.atlantic_cozytouch.api",
+              "custom_components.atlantic_cozytouch.api_discovery",
               "custom_components.atlantic_cozytouch.config_flow",
               "custom_components.atlantic_cozytouch.sensor",
               "custom_components.atlantic_cozytouch.binary_sensor",
@@ -71,6 +72,8 @@ jobs:
               for card in section["cards"]:
                   Environment().parse(card["content"])
           with open("docs/AUDIT_CHECK_TEMPLATE.jinja", encoding="utf-8") as fh:
+              Environment().parse(fh.read())
+          with open("docs/API_DISCOVERY_TEMPLATE.jinja", encoding="utf-8") as fh:
               Environment().parse(fh.read())
           print("OK audit dashboard YAML and Jinja syntax; on-device rendering still required")
           with open("dashboards/atlantic_energy_diagnostic_0_5_0.yaml", encoding="utf-8") as fh:
@@ -165,6 +168,9 @@ jobs:
               attributes = readiness.extra_state_attributes
               assert attributes["rekordy_produkcji_ciepla"] is None
               assert attributes["produkcja_ciepla_zidentyfikowana"] is False
+              discovery = next(e for e in sensors if e._attr_name == "Atlantic · badanie źródeł API")
+              assert discovery.native_value == "wylaczone"
+              assert discovery._attr_unique_id == "atlantic_cozytouch_smoke_api_discovery"
               print("OK safe COP evidence, no unverified producedQuantity as heat")
               print("OK optional compressor entities registered with unknown state")
           asyncio.run(check_registration())
