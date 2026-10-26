@@ -93,7 +93,8 @@ nie statystyki Energy ani wyprodukowane ciepło. Brak podwójnego sumowania źr�
   opcję. Zmiana instalacji czyści kontekst badania; zmiana docelowego urządzenia
   przerywa kolejkę. Więcej niż jeden możliwy interfejs pompy blokuje badanie.
 - 401/429 kończy serię bez następnych żądań; 429 ustawia wspólny cooldown.
-  Błędy 400/403/404/500 są zapisywane bez body i bez ponawiania tej sondy.
+  Błędy 400/403/404/500 nie powodują ponowienia sondy. Dla 400 analizowany jest
+  ograniczony komunikat; raport zawiera tylko stałe etykiety, nigdy body.
 - Brak PATCH/refreshcapability/writecapability, operacji parowania i endpointów admin.
 - Dokładny URL dopuszczany wyłącznie na czas wewnętrznej sondy; ID tylko z
   bieżącej odpowiedzi własnego konta. Brak argumentu umożliwiającego dowolny URL.
@@ -146,3 +147,32 @@ nowych zapytań, brak zmian danych wejściowych/COP, ograniczenie URL do konta,
 401/429, zbyt duży JSON, zły format, zmianę urządzenia, niejednoznaczną pompę,
 prywatność i ograniczenie raportu. Pełny zestaw po dodaniu badania: 228 testów OK.
 Dostępność parametrów na konkretnej pompie pozostaje do potwierdzenia w HA.
+
+
+## Drugi etap: diagnostyka HTTP 400
+
+Raport z rzeczywistego HA potwierdził 200 dla katalogu i dwóch odczytów parametrów,
+lecz 400 dla wszystkich trzech zapytań historii. Bezpośrednie odczyty nie wykazały
+nowych parametrów względem setup. Nie potwierdzono przyczyny 400 ani danych cieplnych.
+
+Nowa wersja analizuje maksymalnie 16 KiB odpowiedzi 400. Pole `error_evidence`
+zawiera wyłącznie etykiety z zamkniętej listy: `parameter_mentions`,
+`format_mentions`, `reason_hints`. Nazwy parametrów i formaty są wskazówkami,
+nie dowodem przyczyny (`cause_confirmed: false`). Rozpoznawane są m.in.
+fromDate/toDate/periodicity, yyyy-MM-dd, yyyyMMdd, ISO8601 i wzmianki o integer,
+timestamp oraz milliseconds. Nieznana treść daje `unrecognized_body`, zbyt duża
+`body_too_large`, błąd odczytu `body_read_failed`. HTTP 400 pozostaje widoczne.
+Serwer może nie zwrócić użytecznej informacji. Treść jest analizowana w pamięci,
+nie zapisywana ani eksportowana. Nie wykonujemy automatycznych korekt ani powtórek.
+
+Katalog analizuje teraz także description i szersze wskazówki energii, prądu,
+grzałek i odszraniania. Raport pokazuje `topic_hints`, bez dowolnych nazw i opisów.
+Maksymalnie 16 dodatkowych, jawnie niewrażliwych ID jest wybieranych w kolejności
+katalogu; limit i heurystyka nie gwarantują kompletności. Wartości nowych ID nadal
+nie są ujawniane. Jednostki i resolution nie zmieniają skalowania telemetrii.
+
+Po aktualizacji uruchom ponownie jedną serię w opcjach HA, zachowaj wynik tego
+samego szablonu, a następnie wyłącz badanie. Szczególnie potrzebne jest
+`results.device_monthly.error_evidence` i odpowiedniki dwóch pozostałych historii.
+Format dat i periodicity pozostają bez zmian do uzyskania nowych dowodów.
+Nie dodano encji cieplnych kWh ani nowego COP: nadal brak potwierdzonego źródła.

@@ -157,3 +157,78 @@ class DiscoveryParsing(unittest.TestCase):
         self.assertEqual(result["rows"][0]["date_epoch"],1793000099)
         self.assertFalse(result["thermal_energy_confirmed"])
         self.assertFalse(result["cop_ready"])
+
+
+class ErrorEvidence(unittest.IsolatedAsyncioTestCase):
+    async def test_400_extracts_clues_without_secrets_or_extra_requests(self):
+        raw = b'{"message":"Invalid fromDate format yyyy-MM-dd for secret@example.invalid token=SECRET_SERIAL deviceId=123456"}'
+        session = DiscoverySession(status=400, raw=raw)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(8):
+            await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(client.discovery_summary["results"]), 6)
+        self.assertEqual(len(session.calls), 8)  # Login/setup plus six probes.
+        result = client.discovery_summary["results"]["device_monthly"]
+        self.assertEqual(result["http_status"], 400)
+        self.assertEqual(result["error_evidence"]["format_mentions"], ["yyyy-MM-dd"])
+        self.assertIn("fromDate", result["error_evidence"]["parameter_mentions"])
+        self.assertFalse(result["error_evidence"]["cause_confirmed"])
+        report = json.dumps(client.discovery_summary)
+        for secret in ("secret@example.invalid", "SECRET_SERIAL", "123456", "token="):
+            self.assertNotIn(secret, report)
+        self.assertEqual(client._discovery_urls, frozenset())
+
+    async def test_400_large_body_preserves_status(self):
+        session = DiscoverySession(status=400, raw=b"x" * (d.MAX_ERROR_BYTES + 1))
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        await client.async_probe_energy_discovery(devices)
+        result = client.discovery_summary["results"]["catalogue"]
+        self.assertEqual(result["http_status"], 400)
+        self.assertEqual(result["error_evidence"], {"state": "body_too_large"})
+
+    async def test_400_body_read_failure_preserves_status(self):
+        class BrokenContent:
+            async def iter_chunked(self, size):
+                raise TimeoutError()
+                yield b""
+        class BrokenSession(DiscoverySession):
+            def get(self, url, **kwargs):
+                reply = super().get(url, **kwargs)
+                if "productmodels" in url:
+                    reply.content = BrokenContent()
+                return reply
+        client = AtlanticReadOnlyClient(BrokenSession(status=400), "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        await client.async_probe_energy_discovery(devices)
+        result = client.discovery_summary["results"]["catalogue"]
+        self.assertEqual(result["http_status"], 400)
+        self.assertEqual(result["error_evidence"]["state"], "body_read_failed")
+
+    def test_unrecognized_or_invalid_utf8_never_exports_body(self):
+        for raw in (b"", b"SECRET_TOKEN", b"<html>private account</html>", b"\xff\xfe"):
+            result = d.error_summary(raw)
+            self.assertEqual(result["state"], "unrecognized_body")
+            self.assertFalse(result["cause_confirmed"])
+
+    def test_catalogue_description_topics_and_limits(self):
+        payload = [{"id": 200+i, "name": "Opaque", "description": "Electrical energy consumption SECRET_SERIAL",
+                    "unit": {}, "isSensitiveData": False} for i in range(30)]
+        report, ids = d.catalogue_summary(payload)
+        self.assertEqual(len(ids), 16)
+        self.assertEqual(len(report["rows"]), 16)
+        self.assertIn("energy", report["rows"][0]["topic_hints"])
+        self.assertIsNone(report["rows"][0]["unit"])
+        self.assertNotIn("SECRET_SERIAL", json.dumps(report))
+        for row in payload:
+            row["isSensitiveData"] = True
+        self.assertEqual(d.catalogue_summary(payload)[1], set())
+
+    def test_catalogue_detects_thermal_and_defrost_in_description(self):
+        report, ids = d.catalogue_summary([
+            {"id": 900, "description": "Delivered thermal energy", "isSensitiveData": False},
+            {"id": 901, "description": "Deicing active", "isSensitiveData": False}])
+        self.assertEqual(ids, {900, 901})
+        self.assertTrue(report["rows"][0]["thermal_name_candidate"])
+        self.assertTrue(report["rows"][1]["defrost_name_candidate"])
