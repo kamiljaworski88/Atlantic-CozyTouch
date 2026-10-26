@@ -715,6 +715,7 @@ class AtlanticReadOnlyClient:
                 or (probe.setup_id is not None and probe.setup_id != self._setup_id)):
             self._discovery_queue.clear()
             self.discovery_summary["state"] = "zmiana_zrodla_przerwano"
+            self.discovery_summary["remaining_requests"] = 0
             return
         self._discovery_urls = frozenset((probe.url,))
         extra_ids = set()
@@ -732,6 +733,21 @@ class AtlanticReadOnlyClient:
                     stop = True
                 if status != 200:
                     result = {"state": "blad_http", "http_status": status}
+                    if status == 400:
+                        # Inspect only a bounded body. Preserve HTTP status even if
+                        # reading fails; never retain or log the server message.
+                        try:
+                            error_raw = bytearray()
+                            async for chunk in response.content.iter_chunked(4096):
+                                error_raw.extend(chunk)
+                                if len(error_raw) > discovery_api.MAX_ERROR_BYTES:
+                                    break
+                            if len(error_raw) > discovery_api.MAX_ERROR_BYTES:
+                                result["error_evidence"] = {"state": "body_too_large"}
+                            else:
+                                result["error_evidence"] = discovery_api.error_summary(error_raw)
+                        except (aiohttp.ClientError, TimeoutError, ValueError, TypeError):
+                            result["error_evidence"] = {"state": "body_read_failed"}
                 else:
                     raw = bytearray()
                     async for chunk in response.content.iter_chunked(65536):
@@ -758,6 +774,7 @@ class AtlanticReadOnlyClient:
         if stop:
             self._discovery_queue.clear()
             self.discovery_summary["state"] = "przerwano_401_lub_429"
+            self.discovery_summary["remaining_requests"] = 0
             return
         if probe.key == "catalogue":
             self._discovery_requested_ids = set(discovery_api.CORE_IDS) | extra_ids

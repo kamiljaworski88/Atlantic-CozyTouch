@@ -3,6 +3,7 @@ from __future__ import annotations
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from math import isfinite
+import re
 from urllib.parse import urlencode
 
 from .const import API_ORIGIN
@@ -11,6 +12,35 @@ CORE_IDS = frozenset((8, 9, 11, 24, 27, 51, 57, 58, 59, 60, 64, 72, 91, 109, 112
 CATALOGUE_URL = API_ORIGIN + "/magellan/productmodels/capabilities"
 UNITS = frozenset(("kWh", "Wh", "kW", "W", "°C", "l/min", "L/min", "s", "h", "%"))
 MAX_BODY_BYTES = 1_000_000
+MAX_ERROR_BYTES = 16_384
+
+
+def error_summary(raw):
+    """Classify bounded error text; output only constants, never server strings.
+
+    Mentions are clues, not proof that a particular parameter caused rejection.
+    No raw message, URL, numeric code, value or identifier leaves this function.
+    """
+    text = raw.decode("utf-8", errors="replace").lower()
+    parameters = [name for name in ("fromDate", "toDate", "periodicity", "deviceId", "setupId")
+                  if re.search(r"(?<![a-z])" + name.lower() + r"(?![a-z])", text)]
+    formats = [label for marker, label in (
+        ("yyyy-mm-dd", "yyyy-MM-dd"), ("yyyyMMdd".lower(), "yyyyMMdd"),
+        ("iso 8601", "ISO8601"), ("iso8601", "ISO8601"),
+        ("unix", "unix_mentioned"), ("timestamp", "timestamp_mentioned"),
+        ("integer", "integer_mentioned"), ("int64", "int64_mentioned"),
+        ("milliseconds", "milliseconds_mentioned"),
+    ) if marker in text]
+    reasons = [label for marker, label in (
+        ("required", "required"), ("missing", "missing"),
+        ("invalid", "invalid"), ("format", "format"),
+        ("convert", "conversion"), ("parse", "parse"),
+        ("range", "range"), ("unsupported", "unsupported"),
+    ) if marker in text]
+    return {"state": "recognized_clues" if parameters or formats or reasons else "unrecognized_body",
+            "parameter_mentions": parameters, "format_mentions": sorted(set(formats)),
+            "reason_hints": reasons, "cause_confirmed": False}
+
 
 
 def number(value):
@@ -50,18 +80,28 @@ def catalogue_summary(payload):
         cap = item.get("id")
         if type(cap) is not int or not 0 <= cap <= 2147483647:
             continue
-        name = item.get("name")
-        name = name.lower() if isinstance(name, str) and len(name) <= 160 else ""
-        thermal = "produc" in name and ("heat" in name or "thermal" in name)
-        defrost = "defrost" in name
+        # Classify metadata locally; never export free text from the catalogue.
+        parts = [item.get(key) for key in ("name", "description")]
+        name = " ".join(part.lower() for part in parts
+                        if isinstance(part, str) and len(part) <= 2048)
+        thermal = any(x in name for x in ("produc", "deliver", "output")) and any(
+            x in name for x in ("heat", "thermal", "calori"))
+        defrost = any(x in name for x in ("defrost", "deicing", "degivr", "dégivr"))
+        topics = [label for words, label in (
+            (("energy", "consum", "energie", "énergie", "kwh"), "energy"),
+            (("electric", "elec", "powerinput"), "electricity"),
+            (("backup", "auxiliary", "resistance", "appoint"), "auxiliary_heater"),
+        ) if any(word in name for word in words)]
+        unit = item.get("unit")
         # Unknown capabilities are presence-only; never export their values.
-        if (thermal or defrost) and item.get("isSensitiveData") is False and len(extra) < 16:
+        if (thermal or defrost or topics) and cap not in CORE_IDS and item.get("isSensitiveData") is False and len(extra) < 16:
             extra.add(cap)
         if cap in CORE_IDS or cap in extra:
             if len(rows) >= 64:
                 continue
             rows.append({"capability_id": cap,
-                         "unit": item.get("unit") if item.get("unit") in UNITS else None,
+                         "unit": unit if isinstance(unit, str) and unit in UNITS else None,
+                         "topic_hints": topics,
                          "resolution": number(item.get("resolution")),
                          "thermal_name_candidate": thermal,
                          "defrost_name_candidate": defrost})
