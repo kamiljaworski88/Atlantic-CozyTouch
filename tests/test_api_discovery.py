@@ -80,8 +80,32 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(query["fromDate"], ["2025-12-01T00:00:00Z"])
         self.assertEqual(query["toDate"], ["2026-01-20T00:00:00Z"])
         self.assertEqual(query["deviceId"], ["9"])
-        self.assertEqual(query["periodicity"], ["monthly"])
+        self.assertEqual(query["periodicity"], ["Monthly"])
 
+    async def test_catalogue_candidates_stay_metadata_only(self):
+        plan = d.build_plan(
+            [{"id": "9", "reported_capability_ids": [91, 112]}],
+            123, {900, 901}, datetime(2026, 1, 20, tzinfo=timezone.utc),
+        )
+        capability_query = parse_qs(urlsplit(plan[0].url).query)
+        requested = set(map(int, capability_query["capabilities"][0].split(";")))
+        self.assertEqual(requested, set(d.CORE_IDS))
+        self.assertNotIn(900, requested)
+
+    async def test_periodicity_uses_case_sensitive_wcf_enum_hypothesis(self):
+        plan = d.build_plan(
+            [{"id": "9", "reported_capability_ids": [91, 112]}],
+            123, set(), datetime(2026, 1, 20, tzinfo=timezone.utc),
+        )
+        history = {
+            probe.key: parse_qs(urlsplit(probe.url).query)
+            for probe in plan if "consumptions" in probe.url
+        }
+        self.assertEqual(history["device_monthly"]["periodicity"], ["Monthly"])
+        self.assertEqual(history["device_daily"]["periodicity"], ["Daily"])
+        self.assertEqual(
+            history["setup_monthly_filtered"]["periodicity"], ["Monthly"]
+        )
     async def test_urls_not_authorized_outside_single_internal_probe(self):
         session = DiscoverySession()
         client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")

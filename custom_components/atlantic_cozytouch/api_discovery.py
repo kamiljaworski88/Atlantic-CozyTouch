@@ -121,7 +121,10 @@ def build_plan(devices, setup_id, extra_ids, now):
     selected = targets(devices)
     if not selected:
         return []
-    ids = sorted(CORE_IDS | set(extra_ids))
+    # The account test showed that adding catalogue-only candidates makes the
+    # whole capabilities request fail with HTTP 400. Keep candidate discovery
+    # as metadata-only and query only the established, reviewed IDs.
+    ids = sorted(CORE_IDS)
     if len(ids) > len(CORE_IDS) + 16 or any(type(x) is not int or not 0 <= x <= 2147483647 for x in ids):
         raise ValueError("capability bounds")
     plan = [Probe("capabilities_" + role, API_ORIGIN + "/magellan/capabilities/?" + urlencode({
@@ -134,12 +137,15 @@ def build_plan(devices, setup_id, extra_ids, now):
     dates = {"fromDate": start.strftime("%Y-%m-%dT%H:%M:%SZ"),
              "toDate": now.strftime("%Y-%m-%dT%H:%M:%SZ")}
     interface = selected[0][1]
-    for period in ("monthly", "daily"):
-        plan.append(Probe("device_" + period, API_ORIGIN + f"/magellan/devices/{interface}/consumptions?"
+    # The WCF backend named periodicity in every HTTP 400 response. Test the
+    # conventional case-sensitive .NET enum spelling while changing no other
+    # request field, so the account result remains interpretable.
+    for key, period in (("monthly", "Monthly"), ("daily", "Daily")):
+        plan.append(Probe("device_" + key, API_ORIGIN + f"/magellan/devices/{interface}/consumptions?"
                           + urlencode({"periodicity": period, **dates}), interface))
     if type(setup_id) is int and 0 < setup_id <= 999999999999999999:
         plan.append(Probe("setup_monthly_filtered", API_ORIGIN + f"/magellan/setups/{setup_id}/consumptions?"
-                          + urlencode({"periodicity": "monthly", **dates, "deviceId": interface}), interface, setup_id))
+                          + urlencode({"periodicity": "Monthly", **dates, "deviceId": interface}), interface, setup_id))
     return plan
 
 
