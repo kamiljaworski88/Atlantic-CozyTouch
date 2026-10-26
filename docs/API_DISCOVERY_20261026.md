@@ -176,3 +176,17 @@ samego szablonu, a następnie wyłącz badanie. Szczególnie potrzebne jest
 `results.device_monthly.error_evidence` i odpowiedniki dwóch pozostałych historii.
 Format dat i periodicity pozostają bez zmian do uzyskania nowych dowodów.
 Nie dodano encji cieplnych kWh ani nowego COP: nadal brak potwierdzonego źródła.
+
+## Trzeci etap: hipoteza wielkości liter periodicity
+
+Drugi raport z HA wskazał `periodicity` we wszystkich trzech odpowiedziach 400,
+bez wskazówki formatu. Zmieniamy wyłącznie wartości na `Daily` i `Monthly`, czyli
+typową pisownię nazw enum w usłudze WCF/.NET. Publiczny opis używa małych liter,
+więc jest to nadal hipoteza wymagająca jednego testu na koncie, a nie ustalony
+kontrakt. Daty ISO UTC, zakres i filtr urządzenia pozostają identyczne.
+
+Ten sam raport pokazał też regresję odczytu capability: katalog zwrócił 16 nowych
+kandydatów, ale bezpośrednie zapytanie z rozszerzoną listą zakończyło się 400 dla
+interfejsu i generatora. Kolejna seria odpytuje zatem wyłącznie wcześniejsze,
+przejrzane `CORE_IDS`, które na tym koncie wcześniej zwróciły 200. Kandydaci
+pozostają widoczni jako metadane katalogu; ich wartości nie są pobierane.
