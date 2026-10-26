@@ -167,6 +167,7 @@ class TestHttpContract(unittest.IsolatedAsyncioTestCase):
             {"auth": "unsafe"},
             {"allow_redirects": True},
             {"timeout": None},
+            {"params": {"unexpected": "query"}},
         ):
             with self.subTest(overrides=kw):
                 with self.assertRaises(AtlanticError):
@@ -633,6 +634,42 @@ class TestDeviceEnergyProbe(unittest.IsolatedAsyncioTestCase):
                 self.assertEqual(client.device_energy_summary["state"], label)
                 self.assertNotIn("SECRET_IDENTIFIER", str(client.device_energy_summary))
                 self.assertIn(112, (await client.async_read())[0]["values"]) if status != 429 else None
+
+
+
+class TestAuditHttpRegressions(unittest.IsolatedAsyncioTestCase):
+    async def test_retry_after_ten_hours_is_not_shortened_to_one_hour(self):
+        from datetime import datetime, timezone
+        client = AtlanticReadOnlyClient(Session(), "fake@example.invalid", "fake")
+        client._note_rate_limited(Reply(429, {}, {"Retry-After": "36000"}))
+        remaining = (client._cooldown_until - datetime.now(timezone.utc)).total_seconds()
+        self.assertGreater(remaining, 35990)
+
+    async def test_http_date_retry_after_is_not_shortened(self):
+        from datetime import datetime, timezone, timedelta
+        from email.utils import format_datetime
+        client = AtlanticReadOnlyClient(Session(), "fake@example.invalid", "fake")
+        future = datetime.now(timezone.utc) + timedelta(hours=10)
+        client._note_rate_limited(Reply(429, {}, {"Retry-After": format_datetime(future)}))
+        self.assertGreater((client._cooldown_until - datetime.now(timezone.utc)).total_seconds(), 35990)
+
+    async def test_nonfinite_and_overflowing_retry_after_do_not_crash(self):
+        from datetime import datetime, timezone
+        for header in ("nan", "inf", "-inf", "1e300", "garbage", "-1"):
+            with self.subTest(header=header):
+                client = AtlanticReadOnlyClient(Session(), "fake@example.invalid", "fake")
+                client._note_rate_limited(Reply(429, {}, {"Retry-After": header}))
+                self.assertGreater(client._cooldown_until, datetime.now(timezone.utc))
+
+    async def test_daily_probe_after_other_probe_invalidates_token_sends_nothing(self):
+        session = ConsumptionSession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        await client.async_read()
+        client._token = None
+        before = list(session.calls)
+        await client.async_probe_consumptions()
+        self.assertEqual(session.calls, before)
+        self.assertEqual(client.consumption_summary["state"], "brak_autoryzacji")
 
 
 if __name__ == "__main__":

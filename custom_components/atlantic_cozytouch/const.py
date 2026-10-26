@@ -16,3 +16,5 @@ HTTP_TIMEOUT_SECONDS = 15
 
 # Explicit user opt-in; no automatic cross-logical-device COP pairing.
 OPT_EXPERIMENTAL_CROSS_DEVICE_COP = "experimental_cross_device_cop"
+
+OPT_API_DISCOVERY = "experimental_api_discovery"

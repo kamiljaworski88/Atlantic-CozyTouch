@@ -11,7 +11,7 @@ from homeassistant.helpers.aiohttp_client import async_get_clientsession
 from homeassistant.helpers.selector import TextSelector, TextSelectorConfig, TextSelectorType
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
-from .const import DOMAIN, OPT_EXPERIMENTAL_CROSS_DEVICE_COP
+from .const import DOMAIN, OPT_EXPERIMENTAL_CROSS_DEVICE_COP, OPT_API_DISCOVERY
 
 
 class AtlanticReadOnlyConfigFlow(config_entries.ConfigFlow, domain=DOMAIN):
@@ -77,7 +77,8 @@ class AtlanticReadOnlyOptionsFlow(config_entries.OptionsFlow):
                 data={
                     OPT_EXPERIMENTAL_CROSS_DEVICE_COP: (
                         user_input.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
-                    )
+                    ),
+                    OPT_API_DISCOVERY: user_input.get(OPT_API_DISCOVERY) is True,
                 },
             )
         return self.async_show_form(
@@ -88,6 +89,10 @@ class AtlanticReadOnlyOptionsFlow(config_entries.OptionsFlow):
                     default=self.config_entry.options.get(
                         OPT_EXPERIMENTAL_CROSS_DEVICE_COP, False
                     ),
+                ): bool,
+                vol.Optional(
+                    OPT_API_DISCOVERY,
+                    default=self.config_entry.options.get(OPT_API_DISCOVERY, False),
                 ): bool,
             }),
         )

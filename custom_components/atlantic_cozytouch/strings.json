@@ -22,9 +22,10 @@
     "step": {
       "init": {
         "title": "Experimental hydraulic COP",
-        "description": "Only if you have one Atlantic heat pump: allow the integration to combine flow/electricity from its interface with temperatures from its single generator. Their hydraulic relationship is not confirmed by the API. COP is an estimate, may remain unknown when idle and must not be used for energy billing.",
+        "description": "Only if you have one Atlantic heat pump: allow the integration to combine flow/electricity from its interface with temperatures from its single generator. Their hydraulic relationship is not confirmed by the API. COP is an estimate, may remain unknown when idle and must not be used for energy billing. API investigation is independent of COP. It exposes selected numeric readings locally, without device identifiers. Disable after collecting results.",
         "data": {
-          "experimental_cross_device_cop": "Enable experimental COP between the unique two logical modules"
+          "experimental_cross_device_cop": "Enable experimental COP between the unique two logical modules",
+          "experimental_api_discovery": "Run a bounded read-only API investigation (up to 6 requests per reload)"
         }
       }
     }

@@ -1,0 +1,60 @@
+title: Atlantic — monitorowanie
+views:
+  - title: Pompa ciepła
+    path: atlantic-audit
+    type: sections
+    max_columns: 3
+    sections:
+      - type: grid
+        cards:
+          - type: markdown
+            title: Komfort i hydraulika
+            content: >-
+              {% set ids = integration_entities('atlantic_cozytouch') %}
+              {% for e in ids %}
+              {% set n = state_attr(e, 'friendly_name') or '' %}
+              {% if 'Temperatura' in n or 'przepływu' in n or 'Aktywny obieg' in n %}
+
+              **{{ n }}:** {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }}
+
+              {% endif %}
+              {% endfor %}
+      - type: grid
+        cards:
+          - type: markdown
+            title: Energia i sprawność — dane eksperymentalne
+            content: >-
+              **COP z 0.5.22 nie ma potwierdzonej zgodności okresów energii.**
+              Wynik historyczny nie opisuje bieżącej sprawności.
+              {% for e in integration_entities('atlantic_cozytouch') %}
+              {% set n = state_attr(e, 'friendly_name') or '' %}
+              {% if 'ostatni zaakceptowany CO' in n or 'ostatni zaakceptowany CWU' in n %}
+
+              **{{ n }}:** {{ states(e) }}
+              Data: {{ state_attr(e, 'ostatni_zaakceptowany_cop_utc') or 'nieznana' }}.
+              {% set t = as_datetime(state_attr(e, 'ostatni_zaakceptowany_cop_utc'), none) %}
+              {% if t is not none %}Wiek: {{ ((now()-t).total_seconds()/3600)|round(1) }} h.{% endif %}
+
+              {% elif 'Energia elektryczna' in n or 'Hipoteza energii' in n %}
+
+              **{{ n }}:** {{ states(e) }} {{ state_attr(e, 'unit_of_measurement') or '' }}
+
+              {% endif %}
+              {% endfor %}
+      - type: grid
+        cards:
+          - type: markdown
+            title: Praca i jakość danych
+            content: >-
+              {% for e in integration_entities('atlantic_cozytouch') %}
+              {% set n = state_attr(e, 'friendly_name') or '' %}
+              {% if 'Sprężarka pracuje' in n or 'Grzałka CWU pracuje' in n or 'Aktualność telemetrii' in n or 'Ostatni udany odczyt' in n or 'status obliczeń' in n or 'audyt źródeł ciepła' in n or 'Kod błędu' in n %}
+
+              **{{ n }}:** {{ states(e) }}
+
+              {% endif %}
+              {% endfor %}
+              Brak stanu nie oznacza wyłączenia urządzenia.
+# Wykresy: dodaj w edytorze HA kartę history-graph i wybierz faktyczne encje
+# temperatur, energii oraz historycznego COP. Nie używaj zgadywanych entity_id.
+# Bieżące encje COP nie oferują statystyk długoterminowych.

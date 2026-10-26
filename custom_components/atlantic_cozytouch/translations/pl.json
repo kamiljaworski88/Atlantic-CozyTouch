@@ -22,9 +22,10 @@
     "step": {
       "init": {
         "title": "Szacunkowy COP hydrauliczny",
-        "description": "Włącz tylko dla instalacji z jedną pompą ciepła Atlantic. Przepływ i licznik prądu z modułu interfejsu zostaną połączone z temperaturami z jedynego modułu generatora. API nie potwierdza ich fizycznego powiązania. Wynik jest szacunkiem; przy wyłączonym grzaniu pozostaje nieznany i nie nadaje się do rozliczeń energii.",
+        "description": "Włącz tylko dla instalacji z jedną pompą ciepła Atlantic. Przepływ i licznik prądu z modułu interfejsu zostaną połączone z temperaturami z jedynego modułu generatora. API nie potwierdza ich fizycznego powiązania. Wynik jest szacunkiem; przy wyłączonym grzaniu pozostaje nieznany i nie nadaje się do rozliczeń energii. Badanie API jest niezależne od COP. Pokazuje lokalnie wybrane wartości liczbowe bez identyfikatorów urządzeń. Wyłącz po zebraniu wyników.",
         "data": {
-          "experimental_cross_device_cop": "Włącz eksperymentalny COP między jedyną parą modułów"
+          "experimental_cross_device_cop": "Włącz eksperymentalny COP między jedyną parą modułów",
+          "experimental_api_discovery": "Uruchom ograniczone badanie API tylko do odczytu (do 6 zapytań na przeładowanie)"
         }
       }
     }
