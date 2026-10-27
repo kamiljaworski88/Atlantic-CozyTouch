@@ -13,7 +13,11 @@ RETENTION_DAYS = 14
 MAX_SAMPLES = RETENTION_DAYS * 24 * 30  # 10,080; <14d at 3-minute polling
 MAX_GAP_S = 480
 MAX_HYDRAULIC_CHANGE_AGE_S = 12 * 3600
-MIN_DAY_COVERAGE = 0.95
+# Research gate: require >=80% *observed* 24-hour hydraulic coverage.
+# The old 95% remains the reference for a near-complete day, NOT a new gate.
+# A partial-day Q divided by a full-day E is biased/period-mismatched.
+MIN_DAY_COVERAGE = 0.80
+NEAR_COMPLETE_DAY_COVERAGE = 0.95
 WATER_KW_FACTOR = 4.186 / 60.0  # approximation for water, NOT glycol
 MAX_HEAT_KW = 25.0
 MAX_COP2 = 12.0
@@ -243,7 +247,14 @@ class Cop2Telemetry:
         day = (now.astimezone(UTC).date() - timedelta(days=1)).isoformat()
         calc = _day_energy(self.samples, day)
         co_e, cwu_e = _electric(daily, 1, day), _electric(daily, 2, day)
-        ready = calc["coverage_pct"] >= 100*MIN_DAY_COVERAGE and calc["segments"] > 0
+        # Use unrounded seconds, never the rounded display percentage at 80%.
+        ready = (
+            calc["covered_s"] >= 86400 * MIN_DAY_COVERAGE
+            and calc["segments"] > 0
+        )
+        partial_day = (
+            ready and calc["covered_s"] < 86400 * NEAR_COMPLETE_DAY_COVERAGE
+        )
         totals = calc["thermal_kwh"]
         ratios = {"CO": None, "CWU": None, "TOTAL": None}
         if ready:
@@ -263,6 +274,12 @@ class Cop2Telemetry:
             status = "brak_pelnej_energii_elektrycznej"
         elif any(v is None for v in ratios.values()):
             status = "nieprawidlowy_bilans_lub_licznik"
+        elif partial_day:
+            # The numerator is integrated ONLY over observed segments; the
+            # denominator is the ENTIRE daily electricity bucket. This is a
+            # research indicator, not like-for-like period COP. Never rescale
+            # missing heat data to a full day.
+            status = "szacunek_niepelna_doba_niska_pewnosc"
         else:
             status = "szacunek_niska_pewnosc"
         self.status = status
@@ -284,7 +301,18 @@ class Cop2Telemetry:
             ),
             "retention_days": RETENTION_DAYS,
             "coverage_pct": calc["coverage_pct"],
+            "minimum_coverage_pct": round(100 * MIN_DAY_COVERAGE),
+            "near_complete_coverage_pct": round(100 * NEAR_COMPLETE_DAY_COVERAGE),
             "covered_seconds": calc["covered_s"],
+            "missing_seconds": max(0, 86400 - calc["covered_s"]),
+            "partial_day": partial_day,
+            "partial_period_bias_warning": (
+                "Cieplo tylko z obserwowanych odcinkow / prad z calej doby; "
+                "nie jest to porownywalny okres COP"
+                if partial_day else None
+            ),
+            "periods_physically_aligned_confirmed": False,
+            "thermal_energy_extrapolated": False,
             "segments": calc["segments"],
             "unknown_compressor_pct": calc["unknown_compressor_pct"],
             "estimated_thermal_co_kwh": totals["CO"] if ready else None,
