@@ -38,6 +38,34 @@ Wedlug juz zapisanych dokumentow repo, nie nowych testow z ta instalacja:
 
 Zrodla: docs/API_DISCOVERY_20261026.md i docs/GATEWAY_API_DISCOVERY_20261027.md.
 
+## Wynik diagnostyki z rzeczywistego Home Assistant — 27.10.2026
+
+Użytkownik uruchomił istniejącą, ograniczoną diagnostykę `experimental_api_discovery` i przekazał wynik z edytora szablonów (bez danych uwierzytelniających):
+
+| Wskaźnik | Wynik |
+| --- | --- |
+| STATUS | `zakonczono_sprawdz_wyniki` |
+| Pozostałe zapytania | 0 |
+| Katalog parametrów | HTTP 200 |
+| `capabilities_interfejs` | HTTP 200 |
+| `capabilities_generator` | HTTP 200 |
+| Wiersze raportu z `defrost_name_candidate=true` | **brak** |
+
+**Interpretacja:** połączenie i badane GET działają; w udostępnionej, ograniczonej tabeli diagnostycznej **nie wykazano** nazwanego parametru defrost. Nie jest to dowód, że żaden endpoint lub fizyczny sterownik nie ma stanu odszraniania. Raport `catalogue_summary` ma limit 64 wierszy, wybiera do 16 dodatkowych identyfikatorów wg kolejności katalogu, a jego proste rozpoznawanie słów kluczowych może pominąć inne nazwy. Własna integracja nie odczytuje wartości nieznanych ID, a poprzednie próby rozszerzenia zapytań skutkowały HTTP 400.
+
+**Decyzja etapu 1:** brak podstaw, by oprzeć automatyzację kabla grzejnego na obecnym API Atlantic. Przechodzimy do planowania obserwacyjnego lokalnego detektora (bez włączania kabla); ewentualne znalezienie dokumentowanego stanu defrost z bezpiecznego wyjścia producenta ma pierwszeństwo przed heurystyką.
+
+### Konkretny krok etapu 2 (bez elektryki i bez sterowania)
+
+1. Przygotować tryb `dry-run`, w którym predykcje/zdarzenia trafiają wyłącznie do diagnostyki, nigdy do przekaźnika.
+2. Rozważyć dwa **lokalne, fizycznie niezależne** sygnały, np. temperaturę odpowiedniego dostępnego, bezpiecznego miejsca wymiennika lub rurki (lokalizacja wymaga potwierdzenia przez instalatora, bez otwierania obiegu chłodniczego) oraz temperaturę powietrza. Sam wzrost temperatury nie dowodzi defrostu.
+3. Zbierać próbki co 10–30 sekund z aktualnością odczytu i czasem odebrania przez HA; dla utraty danych jawny stan `unknown`.
+4. Zebrać kilka prawdziwych cykli defrostu z niezależnym ręcznym oznaczeniem początku/końca, obejmując także zwykłe postoje, przygotowanie CWU i temperatury dodatnie.
+5. Ocenić opóźnienie detekcji, przeoczenia i fałszywe alarmy. Wybierać sposób wyzwalania tylko po wynikach.
+6. Założenia robocze automatyzacji po przyszłej walidacji: +3°C (próg ochrony, do weryfikacji), 10 min dogrzewania, 45 min maksymalnego czasu pojedynczego cyklu; fallback niezależny od HA i chmury w warunkach zamarzania.
+
+Po otrzymaniu powyższego wyniku użytkownik powinien wyłączyć opcję `experimental_api_discovery`, jeśli nie planuje kolejnego odrębnego badania, aby nie uruchamiać kolejnej serii po przeładowaniu integracji. **Nie ma potrzeby powtarzania tego samego eksperymentu w obecnej wersji.**
+
 ## Ocena ryzyka dla sterowania fizycznym grzejnikiem
 
 1. **Krytyczne dla automatyki**: brak zweryfikowanego bitu defrost; nie uruchamiac grzalki na bazie stan sprezarki/tryb CO/samego COP.
@@ -84,7 +112,7 @@ generator_http: {{ results.get('capabilities_generator', {}).get('http_status') 
 - [x] Mapa istniejacych stanow i ograniczen czasowych.
 - [x] Potwierdzony brak **zweryfikowanego** sygnalu defrostu w obecnym mapowaniu.
 - [x] Zidentyfikowana bezpieczna sciezka ograniczonej diagnostyki.
-- [ ] Potwierdzenie mozliwosci bezposredniego odczytu na rzeczywistym urzadzeniu — wymaga danych HA, nie da sie tego uczciwie stwierdzic na podstawie samego repo.
+- [x] Zweryfikowano ograniczone badanie istniejących źródeł API na rzeczywistym urządzeniu (HTTP 200; brak wskazanego kandydata defrost w raporcie). Samo istnienie sygnału pozostaje niepotwierdzone.
 - [ ] Ocena opoznien i skutecznosci detekcji — wymaga obserwacji rzeczywistych cykli.
 
 Nie modyfikowano kodu ani manifestu; brak nowych wersji, encji, komend, zmian elektrycznych i aktywacji grzalki. Brak uruchomienia testow w dzialajacym HA.
