@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.22 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.23 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Niezależny audyt 26.10.2026 (gałąź audytowa)
 
@@ -28,6 +28,15 @@ Nie odblokowuje COP ani sterowania pompą.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.23 — pojedynczy odczyt historii energii bramki
+
+- Opcjonalne `experimental_api_discovery` przeprowadza teraz **maksymalnie siedem** kontrolowanych odczytów GET zamiast sześciu. Ostatni bada `/magellan/gateways/{gatewayId}/consumptions?periodicity=daily` — trasę wskazaną w niezależnej analizie aplikacji Atlantic iOS. Schemat i zakres danych dla Extensa S Duo XL wymagają weryfikacji na rzeczywistej instalacji. Nie ma zgadywania parametrów po niepowodzeniu.
+- ID bramki musi pochodzić bezpośrednio z `gateways[0].id` własnej, uwierzytelnionej odpowiedzi `setupviewv2`; wymagane jest dokładnie jedno, liczbowe ID. Brak lub wiele bramek: **pomijamy test**. Nie stosujemy ID pompy ani numeru seryjnego jako zamiennika.
+- Nowy rezultat `results.gateway_daily_minimal` pokazuje status HTTP i maksymalnie 24 rekordy anonimowej struktury `producedQuantity`/zużycia; nieznany format JSON raportuje tylko bezpieczne nazwy pól. `gateway_target` nie ujawnia ID.
+- Wstępne dane CO/CWU z API z 26.10.2026: energia elektryczna za 22–26 października 34,63/9,28 kWh, ale `producedQuantity=null` we wszystkich dziennych i miesięcznych okresach. Nie ma jeszcze dowodu, że GET bramki udostępni energię cieplną.
+- Nic nie zmienia obliczeń COP, diagnostyki hydraulicznej, lokalnych danych skumulowanych ani dotychczasowego odczytu 9,44. Brak jakichkolwiek komend do pompy i dodatkowych serwerów.
+- [Procedura uruchomienia, bezpieczeństwo i szablon diagnostyczny](docs/GATEWAY_API_DISCOVERY_20261027.md).
 
 ## v0.5.22 — poprawna interpretacja ostatniej zmiany czujników hydraulicznych
 
