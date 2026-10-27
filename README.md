@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.23 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.24 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Niezależny audyt 26.10.2026 (gałąź audytowa)
 
@@ -28,6 +28,16 @@ Nie odblokowuje COP ani sterowania pompą.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.24 — COP2: oddzielny dobowy szacunek hydrauliczny i rejestr próbek
+
+- **Nowa opcja** `experimental_cop2` (domyślnie wyłączona): niezależny od COP1, lokalny 14-dniowy rejestr snapshotów z existing 180 s polling. Zapisuje jedynie dozwolone wartości numeryczne przepływu, temperatur, trybu, liczników CO/CWU, stanu sprężarki/grzałek oraz znaczniki ostatniej zmiany; **bez** serialu, loginu, tokenu, ID urządzeń czy nowych zapytań do Atlantic.
+- Zapis w oddzielnym pliku HA `.storage/atlantic_cozytouch.cop2_telemetry_<entry-id>` (systemowy `Store`), checkpoint maks. co około 15 min i przy prawidłowym unload; retencja 14 dni z limitem 10 080 próbek. Archiwum COP1 jest **nietknięte**.
+- Osobne encje diagnostyczne: `COP2 Atlantic · diagnostyka`, `COP2 Atlantic · CO (eksperymentalny)`, `COP2 Atlantic · CWU (eksperymentalny)`, `COP2 Atlantic · łączny (eksperymentalny)`. Żadna **nie ma** state_class ani ENERGY device_class.
+- Metoda wyłącznie dla **zakończonej doby UTC**: integracja przepływu ID112 i ΔT z ID109/116 generatora metodą trapezów na krótkich (< 8 min) ciągłych odcinkach. Zmiany trybu, potwierdzona grzałka, brak hydrauliki i przestarzałe znaczniki są odrzucane. Potwierdzona wyłączona sprężarka na obu końcach = 0; brak stanu sprężarki = niska pewność. Negatywnego przepływu ciepła nie usuwamy dla poprawienia wyniku.
+- Publikacja **tylko szacunkowego COP2** przy ≥95% pokrycia całej doby oraz dostępnej elektrycznej energii dziennej odpowiedniej kategorii. Brak kategorii CWU nie znaczy 0. Dzienna historia Atlantic może podlegać późniejszej korekcie; wskaźniki są przeliczane na nowo zamiast utrwalania fałszywych statystyk.
+- **Ważne ograniczenie:** skojarzenie ID112 między interfejsem a ID109/116 z generatora, czynnik ciepła właściwego wody, znaczenie chmurowych przedziałów UTC i pełna energia grzałek/odszraniania nie zostały fabrycznie zweryfikowane. Dlatego wynik pozostaje niskiej pewności, nie jest pomiarem producenta ani pomiarem do rozliczeń. Dla dwóch modułów potrzebne są **obie** opcje: experimental_cross_device_cop i experimental_cop2. Wyniki będą dostępne dopiero po zebraniu pełnej doby.
+- [Opis techniczny, warunki jakości i testy COP2](docs/COP2_PLAN_AND_LIMITATIONS_20261027.md).
 
 ## v0.5.23 — pojedynczy odczyt historii energii bramki
 
