@@ -69,6 +69,7 @@ class AtlanticReadOnlyClient:
         self._token_expiry = datetime.min.replace(tzinfo=timezone.utc)
         self._cooldown_until = datetime.min.replace(tzinfo=timezone.utc)
         self._setup_id: int | None = None
+        self._gateway_id: str | None = None  # never exported or logged
         self._consumption_due = datetime.min.replace(tzinfo=timezone.utc)
         self._consumption_disabled = False
         self.consumption_summary: dict = {"state": "nie_sprawdzono"}
@@ -297,8 +298,10 @@ class AtlanticReadOnlyClient:
         except ValueError:
             raise AtlanticError("Unexpected Atlantic response schema") from None
         setup_id = parse_setup_id(payload)
-        if setup_id != self._setup_id:
+        gateway_id = discovery_api.unique_gateway_id(payload)
+        if setup_id != self._setup_id or gateway_id != self._gateway_id:
             self._setup_id = setup_id
+            self._gateway_id = gateway_id
             self._discovery_queue = None
             self._discovery_urls = frozenset()
             self.discovery_summary = {"state": "oczekiwanie", "results": {}, "cop_ready": False}
@@ -698,7 +701,13 @@ class AtlanticReadOnlyClient:
             return
         if self._discovery_queue is None:
             self._discovery_queue = [discovery_api.Probe("catalogue", discovery_api.CATALOGUE_URL)]
-            self.discovery_summary = {"state": "w_trakcie", "results": {}, "cop_ready": False}
+            self.discovery_summary = {
+                "state": "w_trakcie", "results": {}, "cop_ready": False,
+                "gateway_target": (
+                    "jedna_bramka_z_konta" if self._gateway_id else
+                    "brak_lub_wiele_bramek_brak_testu"
+                ),
+            }
         if not self._discovery_queue:
             return
         try:
@@ -712,7 +721,8 @@ class AtlanticReadOnlyClient:
         probe = self._discovery_queue.pop(0)
         own_ids = {identifier for _, identifier in selected}
         if ((probe.target_id is not None and probe.target_id not in own_ids)
-                or (probe.setup_id is not None and probe.setup_id != self._setup_id)):
+                or (probe.setup_id is not None and probe.setup_id != self._setup_id)
+                or (probe.gateway_id is not None and probe.gateway_id != self._gateway_id)):
             self._discovery_queue.clear()
             self.discovery_summary["state"] = "zmiana_zrodla_przerwano"
             self.discovery_summary["remaining_requests"] = 0
@@ -761,6 +771,8 @@ class AtlanticReadOnlyClient:
                         reported = next((set(d.get("reported_capability_ids", []))
                                          for d in devices if d["id"] == probe.target_id), set())
                         result = discovery_api.capability_summary(payload, reported, self._discovery_requested_ids)
+                    elif probe.key == "gateway_daily_minimal":
+                        result = discovery_api.gateway_history_summary(payload)
                     else:
                         result = discovery_api.history_summary(payload)
                     result["http_status"] = 200
@@ -779,7 +791,8 @@ class AtlanticReadOnlyClient:
         if probe.key == "catalogue":
             self._discovery_requested_ids = set(discovery_api.CORE_IDS)
             self._discovery_queue = discovery_api.build_plan(
-                devices, self._setup_id, extra_ids, datetime.now(timezone.utc))
+                devices, self._setup_id, extra_ids, datetime.now(timezone.utc),
+                gateway_id=self._gateway_id)
         self.discovery_summary["remaining_requests"] = len(self._discovery_queue)
         self.discovery_summary["state"] = (
             "w_trakcie" if self._discovery_queue else "zakonczono_sprawdz_wyniki")

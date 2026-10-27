@@ -17,13 +17,15 @@ class Content:
 
 
 class DiscoverySession(Session):
-    def __init__(self, status=200, raw=None):
+    def __init__(self, status=200, raw=None, gateway_id=None):
         super().__init__(setup_payload=[{"id": 123, "devices": [
             {"deviceId": 9, "capabilities": [
                 {"capabilityId": 91, "value": "1"}, {"capabilityId": 112, "value": "17"}]},
             {"deviceId": 10, "capabilities": [
                 {"capabilityId": 109, "value": "35"}, {"capabilityId": 116, "value": "31"}]},
         ]}])
+        if gateway_id is not None:
+            self.setup_payload[0]["gateways"] = [{"id": gateway_id}]
         self.discovery_status = status
         self.raw = raw
 
@@ -74,6 +76,106 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
             self.assertEqual(urlsplit(url).netloc, "apis.groupe-atlantic.com")
             self.assertFalse(options["allow_redirects"])
         self.assertEqual(client._discovery_urls, frozenset())
+
+    async def test_unique_owned_gateway_adds_exactly_one_seventh_read(self):
+        session = DiscoverySession(gateway_id=77)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        self.assertEqual(client._gateway_id, "77")
+        for i in range(7):
+            before = len(session.calls)
+            await client.async_probe_energy_discovery(devices)
+            self.assertEqual(len(session.calls), before + 1)
+        before = len(session.calls)
+        await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(session.calls), before)
+        self.assertEqual(client.discovery_summary["state"], "zakonczono_sprawdz_wyniki")
+        self.assertEqual(client.discovery_summary["gateway_target"], "jedna_bramka_z_konta")
+        result = client.discovery_summary["results"]["gateway_daily_minimal"]
+        self.assertEqual(result["http_status"], 200)
+        self.assertEqual(result["produced_non_null"], 1)
+        self.assertFalse(result["thermal_energy_confirmed"])
+        self.assertFalse(result["cop_ready"])
+        self.assertEqual(
+            session.calls[-1][1],
+            d.API_ORIGIN + "/magellan/gateways/77/consumptions?periodicity=daily",
+        )
+        report = json.dumps(client.discovery_summary)
+        for secret in ("SECRET_SERIAL", "SECRET_ID", "fake@example.invalid",
+                       "Bearer", "/magellan/gateways/77/"):
+            self.assertNotIn(secret, report)
+        for method, url, kw in session.calls[2:]:
+            self.assertEqual(method, "GET")
+            self.assertFalse(kw["allow_redirects"])
+            self.assertEqual(urlsplit(url).netloc, "apis.groupe-atlantic.com")
+        self.assertEqual(client._discovery_urls, frozenset())
+
+    async def test_multiple_gateways_or_invalid_gateway_make_no_extra_get(self):
+        for gateway in (None, "not-an-id", "0", "0001", True):
+            with self.subTest(gateway=gateway):
+                session = DiscoverySession(gateway_id=gateway)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+                devices = await client.async_read()
+                for _ in range(9):
+                    await client.async_probe_energy_discovery(devices)
+                self.assertEqual(len(client.discovery_summary["results"]), 6)
+                self.assertEqual(
+                    client.discovery_summary["gateway_target"],
+                    "brak_lub_wiele_bramek_brak_testu",
+                )
+                self.assertNotIn("/magellan/gateways/", str(session.calls))
+        session = DiscoverySession(gateway_id=11)
+        session.setup_payload[0]["gateways"].append({"id": 12})
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(9):
+            await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(client.discovery_summary["results"]), 6)
+        self.assertNotIn("/magellan/gateways/", str(session.calls))
+
+    async def test_untrusted_gateway_url_is_rejected_outside_internal_probe(self):
+        session = DiscoverySession(gateway_id=77)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        await client.async_read()
+        for candidate in (
+            d.API_ORIGIN + "/magellan/gateways/77/consumptions?periodicity=daily",
+            d.API_ORIGIN + "/magellan/gateways/78/consumptions?periodicity=daily",
+            d.API_ORIGIN + "/magellan/gateways/77/consumptions?periodicity=monthly",
+            d.API_ORIGIN + "/magellan/gateways/77/consumptions?periodicity=daily&deviceId=9",
+            "https://example.invalid/magellan/gateways/77/consumptions?periodicity=daily",
+        ):
+            with self.subTest(url=candidate):
+                with self.assertRaises(AtlanticError):
+                    client._request("GET", candidate)
+        with self.assertRaises(AtlanticError):
+            client._request("POST", d.CATALOGUE_URL)
+        self.assertEqual([call[0] for call in session.calls], ["POST", "GET"])
+
+    async def test_gateway_change_interrupts_a_pending_probe_without_get(self):
+        session = DiscoverySession(gateway_id=77)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(6):
+            await client.async_probe_energy_discovery(devices)
+        session.setup_payload[0]["gateways"][0]["id"] = 78
+        # Setup read detects account gateway switch and resets research queue.
+        await client.async_read()
+        self.assertEqual(client._gateway_id, "78")
+        before = len(session.calls)
+        await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(session.calls), before + 1)
+        self.assertTrue(session.calls[-1][1].endswith("productmodels/capabilities"))
+        self.assertNotIn("77", json.dumps(client.discovery_summary))
+
+    async def test_gateway_error_no_retry_and_no_cop(self):
+        session = DiscoverySession(status=500, gateway_id=77)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(8):
+            await client.async_probe_energy_discovery(devices)
+        self.assertEqual(client.discovery_summary["results"]["gateway_daily_minimal"]["http_status"], 500)
+        self.assertEqual(len(session.calls), 9)  # Login, setup, seven GET probes.
+        self.assertFalse(client.discovery_summary["cop_ready"])
 
     async def test_minimal_consumption_queries_match_observed_wire_shape(self):
         plan = d.build_plan(
@@ -163,6 +265,29 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
 
 
 class DiscoveryParsing(unittest.TestCase):
+    def test_gateway_id_is_from_single_authenticated_gateway_only(self):
+        self.assertEqual(d.unique_gateway_id([{"gateways": [{"id": 345}]}]), "345")
+        self.assertEqual(d.unique_gateway_id([{"gateways": [{"id": "345"}]}]), "345")
+        for payload in ([], {}, [{"gateways": []}],
+                        [{"gateways": [{"id": 1}, {"id": 2}]}],
+                        [{"gateways": [{"deviceId": "21"}]}],
+                        [{"gateways": [{"id": True}]}],
+                        [{"gateways": [{"id": "42/../../users"}]}],
+                        [{"gateways": [{"id": "0"}]}]):
+            self.assertIsNone(d.unique_gateway_id(payload))
+
+    def test_gateway_object_schema_never_exposes_raw_details(self):
+        secret = {"gatewayId": "SECRET_SERIAL", "token": "PRIVATE",
+                  "data": {"serialNumber": "SECRET_ID"},
+                  "extra": {"account": "fake@example.invalid"}}
+        result = d.gateway_history_summary(secret)
+        self.assertEqual(result["state"], "nieznany_format_obiektu")
+        self.assertEqual(result["znane_pola_obecne"], ["data"])
+        for sensitive in ("SECRET_ID", "SECRET_SERIAL", "PRIVATE",
+                          "fake@example.invalid"):
+            self.assertNotIn(sensitive, json.dumps(result))
+        self.assertFalse(result["cop_ready"])
+
     def test_catalogue_sensitivity_and_unknown_values(self):
         summary, extra = d.catalogue_summary([
             {"id":999,"name":"HeatProduced","isSensitiveData":False,"unit":"kWh"},

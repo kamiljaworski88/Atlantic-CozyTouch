@@ -57,6 +57,26 @@ def valid_id(value):
             and 1 <= len(value) <= 18 and not value.startswith("0"))
 
 
+def unique_gateway_id(setup_payload: object) -> str | None:
+    """Select precisely one numeric gateway from the authenticated setup.
+
+    Gateway 'id' is not a deviceId/serial or a caller-supplied identifier.
+    Multiple/missing/malformed entries disable the probe.
+    """
+    if (not isinstance(setup_payload, list) or len(setup_payload) != 1
+            or not isinstance(setup_payload[0], dict)):
+        return None
+    gateways = setup_payload[0].get("gateways")
+    if not isinstance(gateways, list) or len(gateways) != 1:
+        return None
+    if not isinstance(gateways[0], dict):
+        return None
+    raw = gateways[0].get("id")
+    if type(raw) is int:
+        raw = str(raw)
+    return raw if valid_id(raw) and int(raw) < 10**18 else None
+
+
 def targets(devices):
     interfaces = [d for d in devices if {91, 112}.issubset(d.get("reported_capability_ids", []))]
     if len(interfaces) != 1 or not valid_id(interfaces[0].get("id")):
@@ -114,9 +134,10 @@ class Probe:
     url: str
     target_id: str | None = None
     setup_id: int | None = None
+    gateway_id: str | None = None
 
 
-def build_plan(devices, setup_id, _extra_ids, _now):
+def build_plan(devices, setup_id, _extra_ids, _now, gateway_id: str | None = None):
     selected = targets(devices)
     if not selected:
         return []
@@ -142,6 +163,15 @@ def build_plan(devices, setup_id, _extra_ids, _now):
     plan.append(Probe("device_monthly_minimal",
                       API_ORIGIN + f"/magellan/devices/{interface}/consumptions?"
                       + urlencode({"periodicity": "monthly"}), interface))
+    # Observed in the Atlantic iOS client, but not proven on this account.
+    # A single GET; no retries, date-format variations or deviceId guessing.
+    if valid_id(gateway_id) and int(gateway_id) < 10**18:
+        plan.append(Probe(
+            "gateway_daily_minimal",
+            API_ORIGIN + f"/magellan/gateways/{gateway_id}/consumptions?"
+            + urlencode({"periodicity": "daily"}),
+            gateway_id=gateway_id,
+        ))
     return plan
 
 
@@ -199,3 +229,31 @@ def history_summary(payload):
             "rows": rows, "omitted_rows": max(0, count-len(rows)),
             "thermal_energy_confirmed": False, "period_end_confirmed": False,
             "date_encoding": "epoch_seconds_hypothesis", "cop_ready": False}
+
+
+def gateway_history_summary(payload: object) -> dict:
+    """Parse known history schema, or reveal only anonymous shape metadata.
+
+    A non-null producedQuantity remains a CANDIDATE, never a heat-meter
+    measurement and never published into Home Assistant Energy or COP.
+    """
+    if isinstance(payload, list):
+        result = history_summary(payload)
+        result["zrodlo"] = "historia_bramki"
+        result["produced_non_null"] = sum(
+            row["produced_quantity_raw"] is not None for row in result["rows"]
+        )
+        result["cop_ready"] = False
+        result["thermal_energy_confirmed"] = False
+        return result
+    if isinstance(payload, dict):
+        whitelist = ("consumptionPeriods", "consumptions", "data", "items",
+                     "results", "records", "value", "status")
+        return {
+            "state": "nieznany_format_obiektu",
+            "typ": "object",
+            "znane_pola_obecne": [k for k in whitelist if k in payload],
+            "thermal_energy_confirmed": False,
+            "cop_ready": False,
+        }
+    raise ValueError("Gateway response schema unrecognized")
