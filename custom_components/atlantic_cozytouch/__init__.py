@@ -14,9 +14,10 @@ from homeassistant.helpers.update_coordinator import DataUpdateCoordinator, Upda
 from homeassistant.helpers.storage import Store
 
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
-from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP, OPT_API_DISCOVERY
+from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP, OPT_API_DISCOVERY, OPT_COP2
 from .compressor import CompressorMonitor
 from .cop_snapshot import HydraulicCopEstimator
+from .cop2_telemetry import Cop2Telemetry
 from .energy_validation import EnergyValidationMonitor
 
 _LOGGER = logging.getLogger(__name__)
@@ -53,6 +54,14 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if saved_last is not None:
         cop_monitor.restore_last_cops(saved_last)
 
+    cop2_enabled = entry.options.get(OPT_COP2) is True
+    cop2 = Cop2Telemetry(
+        allow_cross=entry.options.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
+    ) if cop2_enabled else None
+    cop2_store = Store(hass, 1, f"{DOMAIN}.cop2_telemetry_{entry.entry_id}")
+    if cop2_enabled:
+        cop2.restore(await cop2_store.async_load())
+
     async def update():
         try:
             devices = await client.async_read()
@@ -74,6 +83,13 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
+            if cop2 is not None:
+                # COP2 never mutates existing COP1 state, statistics or Energy.
+                cop2.ingest(devices, observed_at, coordinator.atlantic_daily_energy)
+                # Preserve bounded samples about every 15 minutes, not each poll.
+                if observed_at - coordinator.atlantic_cop2_last_persist >= timedelta(minutes=15):
+                    cop2_store.async_delay_save(cop2.export, 30)
+                    coordinator.atlantic_cop2_last_persist = observed_at
             old_intervals = cop_monitor.accumulated_intervals
             old_last_cops = cop_monitor.export_last_cops()
             cop_monitor.ingest(devices, observed_at)
@@ -107,6 +123,9 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         update_interval=timedelta(seconds=POLL_SECONDS),
     )
     coordinator.atlantic_last_success_at = None
+    coordinator.atlantic_cop2 = cop2
+    coordinator.atlantic_cop2_store = cop2_store if cop2_enabled else None
+    coordinator.atlantic_cop2_last_persist = datetime.min.replace(tzinfo=UTC)
     coordinator.atlantic_compressor = compressor_monitor
     coordinator.atlantic_energy = energy_monitor
     coordinator.atlantic_hydraulic_cop = cop_monitor
@@ -138,6 +157,10 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
         await coordinator.atlantic_last_cop_store.async_save(
             coordinator.atlantic_hydraulic_cop.export_last_cops()
         )
+        if coordinator.atlantic_cop2 is not None:
+            await coordinator.atlantic_cop2_store.async_save(
+                coordinator.atlantic_cop2.export()
+            )
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
 
