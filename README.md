@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.24 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.25 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Niezależny audyt 26.10.2026 (gałąź audytowa)
 
@@ -28,6 +28,13 @@ Nie odblokowuje COP ani sterowania pompą.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.25 — COP2: próg obserwacji doby 80% zamiast 95%
+
+- **Nowy próg:** akceptacja eksperymentalnego wskaźnika COP2 zaczyna się przy **≥80% z 86 400 s** poprawnych odcinków hydraulicznych w zakończonej dobie UTC; poprzednio wymagano ≥95%. Test progu korzysta z **niezaokrąglonych sekund**, więc 79,99% nie zostanie zaakceptowane.
+- Gdy pokrycie wynosi **80–<95%**, encja diagnostyczna zgłasza `szacunek_niepelna_doba_niska_pewnosc`. Dostępne są nowe atrybuty `minimum_coverage_pct`, `near_complete_coverage_pct`, `missing_seconds`, `partial_day`, `partial_period_bias_warning`, `periods_physically_aligned_confirmed=false` i `thermal_energy_extrapolated=false`.
+- **Uwaga o matematyce:** przy niepełnej dobie energia cieplna pochodzi wyłącznie z zapisanych fragmentów, podczas gdy energia elektryczna nadal obejmuje całą dobę. Iloraz NIE jest wtedy COP dla wspólnego przedziału czasu; może być zaniżony, ale nie można gwarantować kierunku błędu. Nie poprawiamy brakujących godzin mnożnikiem 100/pokrycie.
+- Powyżej 95% istniejące `szacunek_niska_pewnosc` pozostaje bez zmian. COP2 jest nadal diagnostyczny i niezależny od COP1, bez nowego GET, bez klasy ENERGY lub state_class.
 
 ## v0.5.24 — COP2: oddzielny dobowy szacunek hydrauliczny i rejestr próbek
 
