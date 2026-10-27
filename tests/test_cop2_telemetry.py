@@ -77,7 +77,7 @@ class Cop2Contract(unittest.TestCase):
         rec = mod.Cop2Telemetry(allow_cross=True)
         for i in range(sample_count):
             t = DAY + timedelta(minutes=i*3)
-            rec.ingest(readings(t, mode="CO" if i < 300 else "CWU", cross=True),
+            rec.ingest(readings(t, mode="CO", cross=True),
                        t, DAILY)
         rec.evaluate(DAILY, NEXT)
         return rec
