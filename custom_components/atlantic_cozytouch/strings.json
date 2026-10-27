@@ -21,11 +21,12 @@
   "options": {
     "step": {
       "init": {
-        "title": "Experimental hydraulic COP",
-        "description": "Only if you have one Atlantic heat pump: allow the integration to combine flow/electricity from its interface with temperatures from its single generator. Their hydraulic relationship is not confirmed by the API. COP is an estimate, may remain unknown when idle and must not be used for energy billing. API investigation is independent of COP. It exposes selected numeric readings locally, without device identifiers. Disable after collecting results.",
+        "title": "Experimental COP and COP2",
+        "description": "Only if you have one Atlantic heat pump: allow the integration to combine flow/electricity from its interface with temperatures from its single generator. Their hydraulic relationship is not confirmed by the API. COP is an estimate, may remain unknown when idle and must not be used for energy billing. API investigation is independent of COP. It exposes selected numeric readings locally, without device identifiers. Disable after collecting results. COP2 is a separate, experimental daily hydraulic ratio based on a local 14-day sample recorder. If data comes from two logical modules, enable cross-module pairing too. COP2 is not a vendor meter or a billable measurement.",
         "data": {
           "experimental_cross_device_cop": "Enable experimental COP between the unique two logical modules",
-          "experimental_api_discovery": "Run a bounded read-only API investigation (up to 6 requests per reload)"
+          "experimental_api_discovery": "Run a bounded read-only API investigation (up to 7 requests per reload)",
+          "experimental_cop2": "Enable COP2 and a local 14-day telemetry recorder (off by default)"
         }
       }
     }

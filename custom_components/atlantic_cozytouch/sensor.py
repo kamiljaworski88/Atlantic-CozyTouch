@@ -72,6 +72,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # Preserve the existing diagnostic unique_id across upgrades.
     async_add_entities([
         AtlanticApiDiscoverySensor(coordinator, entry.entry_id),
+        AtlanticCop2DiagnosticSensor(coordinator, entry.entry_id),
+        AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_co"),
+        AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_cwu"),
+        AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_total"),
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
@@ -846,3 +850,69 @@ class AtlanticApiDiscoverySensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return getattr(self.coordinator, "atlantic_api_discovery", {})
+
+
+class AtlanticCop2DiagnosticSensor(CoordinatorEntity, SensorEntity):
+    """Independent local observation quality, not cloud COP or HA Energy."""
+
+    _attr_has_entity_name = True
+    _attr_name = "COP2 Atlantic · diagnostyka"
+    _attr_icon = "mdi:chart-timeline-variant"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry_id):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_cop2_diagnostic"
+
+    @property
+    def native_value(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        return recorder.status if recorder is not None else "wylaczone"
+
+    @property
+    def extra_state_attributes(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        return dict(recorder.result) if recorder is not None else {
+            "status": "wylaczone", "opt_in_required": True,
+            "not_vendor_cop": True,
+        }
+
+
+class AtlanticCop2EstimateSensor(CoordinatorEntity, SensorEntity):
+    """Research-only daily COP2, never an Energy or certified COP sensor."""
+
+    _attr_has_entity_name = True
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:calculator-variant"
+    _LABELS = {
+        "cop2_co": "COP2 Atlantic · CO (eksperymentalny)",
+        "cop2_cwu": "COP2 Atlantic · CWU (eksperymentalny)",
+        "cop2_total": "COP2 Atlantic · łączny (eksperymentalny)",
+    }
+
+    def __init__(self, coordinator, entry_id, key):
+        super().__init__(coordinator)
+        self._key = key
+        self._attr_name = self._LABELS[key]
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_{key}"
+        # No state_class: this is not a validated measurement, and cannot
+        # silently pollute recorder statistics or the HA Energy dashboard.
+
+    @property
+    def native_value(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        return recorder.result.get(self._key) if recorder is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        result = recorder.result if recorder is not None else {}
+        return {
+            "metoda": "szacunek_hydrauliczny_COP2",
+            "data_utc": result.get("day_utc"),
+            "pokrycie_procent": result.get("coverage_pct"),
+            "status": result.get("status", "wylaczone"),
+            "nie_jest_pomiarem_producenta": True,
+            "zrodlo_pradu": "historia_dzienna_Magellan",
+            "wymagana_walidacja_hydrauliki": True,
+        }

@@ -18,3 +18,6 @@ HTTP_TIMEOUT_SECONDS = 15
 OPT_EXPERIMENTAL_CROSS_DEVICE_COP = "experimental_cross_device_cop"
 
 OPT_API_DISCOVERY = "experimental_api_discovery"
+
+# Isolated, explicitly opted-in local recorder and alternative COP2.
+OPT_COP2 = "experimental_cop2"
