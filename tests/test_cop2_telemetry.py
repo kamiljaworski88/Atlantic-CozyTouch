@@ -73,6 +73,56 @@ class Cop2Contract(unittest.TestCase):
         self.assertEqual(result["unknown_compressor_pct"], 100)
         self.assertTrue(result["not_vendor_cop"])
 
+    def _partial_day(self, sample_count):
+        rec = mod.Cop2Telemetry(allow_cross=True)
+        for i in range(sample_count):
+            t = DAY + timedelta(minutes=i*3)
+            rec.ingest(readings(t, mode="CO" if i < 300 else "CWU", cross=True),
+                       t, DAILY)
+        rec.evaluate(DAILY, NEXT)
+        return rec
+
+    def test_cop2_accepts_exactly_80_percent_observed_day_as_low_trust(self):
+        # 384 intervals x 180 seconds = exactly 69,120 seconds = 80%.
+        rec = self._partial_day(385)
+        result = rec.result
+        self.assertEqual(result["covered_seconds"], 69120)
+        self.assertEqual(result["coverage_pct"], 80.0)
+        self.assertEqual(result["minimum_coverage_pct"], 80)
+        self.assertEqual(result["missing_seconds"], 17280)
+        self.assertEqual(result["status"], "szacunek_niepelna_doba_niska_pewnosc")
+        self.assertTrue(result["partial_day"])
+        self.assertIsNotNone(result["cop2_total"])
+        self.assertIsNotNone(result["partial_period_bias_warning"])
+        self.assertFalse(result["thermal_energy_extrapolated"])
+        self.assertFalse(result["periods_physically_aligned_confirmed"])
+
+    def test_cop2_rejects_just_below_80_percent_without_rounding(self):
+        rec = self._partial_day(384)
+        result = rec.result
+        self.assertLess(result["coverage_pct"], 80.0)
+        self.assertEqual(result["status"], "niewystarczajace_pokrycie")
+        self.assertIsNone(result["cop2_total"])
+        self.assertIsNone(result["estimated_thermal_co_kwh"])
+        self.assertFalse(result["partial_day"])
+
+    def test_cop2_near_complete_does_not_get_partial_day_status(self):
+        rec = self._partial_day(458)  # 457 * 180 = 95.208% of the day
+        self.assertGreaterEqual(rec.result["coverage_pct"], 95)
+        self.assertEqual(rec.result["status"], "szacunek_niska_pewnosc")
+        self.assertFalse(rec.result["partial_day"])
+        self.assertIsNone(rec.result["partial_period_bias_warning"])
+
+    def test_no_automatic_extrapolation_from_80_percent_to_full_day(self):
+        shorter = self._partial_day(385)
+        full = self._partial_day(481)
+        self.assertLess(shorter.result["estimated_thermal_co_kwh"],
+                        full.result["estimated_thermal_co_kwh"])
+        self.assertEqual(shorter.result["electric_co_kwh"], 20.0)
+        self.assertEqual(full.result["electric_co_kwh"], 20.0)
+        self.assertTrue(shorter.result["partial_day"])
+        self.assertFalse(shorter.result["thermal_energy_extrapolated"])
+
     def test_coverage_not_guessed_from_discrete_meter_step(self):
         rec = mod.Cop2Telemetry(allow_cross=True)
         for i in range(20):
