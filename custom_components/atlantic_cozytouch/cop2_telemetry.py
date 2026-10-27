@@ -192,7 +192,9 @@ class Cop2Telemetry:
             if not isinstance(row, dict):
                 return
             t = row.get("t")
-            if type(t) is not int or not now_s - RETENTION_DAYS*86400 <= t <= now_s + 60:
+            if type(t) is not int:
+                return  # corrupted storage must not erase previous samples
+            if not now_s - RETENTION_DAYS*86400 <= t <= now_s + 60:
                 continue
             if type(row.get("valid")) is not bool or row.get("mode") not in ("CO", "CWU", None):
                 return
