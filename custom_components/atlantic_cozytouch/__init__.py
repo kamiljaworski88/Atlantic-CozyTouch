@@ -19,6 +19,7 @@ from .compressor import CompressorMonitor
 from .cop_snapshot import HydraulicCopEstimator
 from .cop2_telemetry import Cop2Telemetry
 from .energy_validation import EnergyValidationMonitor
+from .panel import async_setup_panel, async_remove_panel
 
 _LOGGER = logging.getLogger(__name__)
 
@@ -140,6 +141,11 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     await coordinator.async_config_entry_first_refresh()
     hass.data.setdefault(DOMAIN, {})[entry.entry_id] = coordinator
     await hass.config_entries.async_forward_entry_setups(entry, PLATFORMS)
+    # Frontend is optional: never prevent Atlantic telemetry if panel setup fails.
+    try:
+        await async_setup_panel(hass)
+    except (ImportError, ValueError, RuntimeError) as exc:
+        _LOGGER.warning("Atlantic dashboard not available: %s", exc)
     entry.async_on_unload(entry.add_update_listener(_async_update_options))
     return True
 
@@ -161,6 +167,8 @@ async def async_unload_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             await coordinator.atlantic_cop2_store.async_save(
                 coordinator.atlantic_cop2.export()
             )
+        # A single integration entry owns the sidebar registration.
+        async_remove_panel(hass)
         hass.data[DOMAIN].pop(entry.entry_id, None)
     return unloaded
 
