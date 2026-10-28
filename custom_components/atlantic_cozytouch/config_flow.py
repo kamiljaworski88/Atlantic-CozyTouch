@@ -88,7 +88,7 @@ class AtlanticReadOnlyOptionsFlow(config_entries.OptionsFlow):
                 vol.Optional(
                     OPT_EXPERIMENTAL_CROSS_DEVICE_COP,
                     default=self.config_entry.options.get(
-                        OPT_EXPERIMENTAL_CROSS_DEVICE_COP, False
+                        OPT_EXPERIMENTAL_CROSS_DEVICE_COP, True
                     ),
                 ): bool,
                 vol.Optional(
@@ -97,7 +97,7 @@ class AtlanticReadOnlyOptionsFlow(config_entries.OptionsFlow):
                 ): bool,
                 vol.Optional(
                     OPT_COP2,
-                    default=self.config_entry.options.get(OPT_COP2, False),
+                    default=self.config_entry.options.get(OPT_COP2, True),
                 ): bool,
             }),
         )
