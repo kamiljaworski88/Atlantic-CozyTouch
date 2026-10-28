@@ -93,9 +93,13 @@ class TestDailySensorContract(unittest.TestCase):
     def test_stale_or_missing_data_never_becomes_zero(self):
         sensor = self.cls(self.coord, "ENTRY", 1, 0)
         del self.coord.atlantic_daily_energy[1]["2026-10-23"]
-        self.assertFalse(sensor.available)
-        self.assertIsNone(sensor.native_value)
+        self.assertTrue(sensor.available)  # Valid older history must remain visible.
+        self.assertIsNone(sensor.native_value)  # A missing day is NOT zero.
         self.assertIsNone(sensor.last_reset)
+        self.assertEqual(
+            sensor.extra_state_attributes["historia_ostatnich_7_dni_utc"],
+            [{"dzien_utc": "2026-10-22", "kwh": 1.0}],
+        )
         self.coord.atlantic_daily_energy[1]["2026-10-23"] = 2.5
         self.coord.atlantic_consumptions = {"state": "blad_http"}
         self.assertFalse(sensor.available)
@@ -103,6 +107,21 @@ class TestDailySensorContract(unittest.TestCase):
         self.coord.atlantic_consumptions = {"state": "dostepna"}
         self.coord.last_update_success = False
         self.assertFalse(sensor.available)
+
+    def test_cwu_history_survives_missing_today_and_preserves_real_zero(self):
+        cwu = self.cls(self.coord, "ENTRY", 2, 0)
+        del self.coord.atlantic_daily_energy[2]["2026-10-23"]
+        self.assertTrue(cwu.available)
+        self.assertIsNone(cwu.native_value)
+        self.assertIsNone(cwu.last_reset)
+        self.assertEqual(
+            cwu.extra_state_attributes["historia_ostatnich_7_dni_utc"],
+            [{"dzien_utc": "2026-10-22", "kwh": 0.5}],
+        )
+        self.coord.atlantic_daily_energy[2]["2026-10-23"] = 0.0
+        self.assertTrue(cwu.available)
+        self.assertEqual(cwu.native_value, 0.0)
+        self.assertIsNotNone(cwu.last_reset)
 
     def test_category_and_offset_allowlist(self):
         for cat, offset in ((0, 0), (3, 0), (1, 2)):
