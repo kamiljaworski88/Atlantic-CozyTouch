@@ -180,6 +180,34 @@ jobs:
               discovery = next(e for e in sensors if e._attr_name == "Atlantic · badanie źródeł API")
               assert discovery.native_value == "wylaczone"
               assert discovery._attr_unique_id == "atlantic_cozytouch_smoke_api_discovery"
+              # CWU may have previous valid days but NO record for today.
+              # The dashboard must still receive historical attributes.
+              from datetime import datetime, timedelta, UTC
+              today = datetime.now(UTC).date()
+              yesterday = (today - timedelta(days=1)).isoformat()
+              co = hass.data[DOMAIN]["smoke"]
+              co.atlantic_consumptions = {"state": "dostepna"}
+              co.atlantic_daily_energy = {2: {yesterday: 1.15}}
+              cwu_today = next(e for e in sensors if
+                  e._attr_name == "Energia elektryczna CWU · dzisiaj (UTC)")
+              assert cwu_today.available, "Missing today's CWU cannot hide history"
+              assert cwu_today.native_value is None, "Missing is NOT zero"
+              assert cwu_today.last_reset is None
+              history = cwu_today.extra_state_attributes["historia_ostatnich_7_dni_utc"]
+              assert history == [{"dzien_utc": yesterday, "kwh": 1.15}], history
+              cwu_yesterday = next(e for e in sensors if
+                  e._attr_name == "Energia elektryczna CWU · wczoraj (UTC)")
+              assert cwu_yesterday.available
+              assert cwu_yesterday.native_value == 1.15
+              co.atlantic_daily_energy = {2: {}}
+              assert cwu_today.available and cwu_today.native_value is None
+              assert cwu_today.extra_state_attributes["historia_ostatnich_7_dni_utc"] == []
+              co.atlantic_daily_energy = {2: {today.isoformat(): 0.0}}
+              assert cwu_today.native_value == 0.0, "Verified zero must be distinct"
+              co.atlantic_consumptions = {"state": "brak_danych"}
+              assert cwu_today.available is False, "Failed cloud history stays unavailable"
+              print("OK CWU history visible with missing current day; no false zero")
+
               print("OK safe COP evidence, no unverified producedQuantity as heat")
               print("OK optional compressor entities registered with unknown state")
           asyncio.run(check_registration())
