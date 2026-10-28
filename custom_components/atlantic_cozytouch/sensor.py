@@ -665,7 +665,8 @@ class AtlanticDailyElectricitySensor(CoordinatorEntity, SensorEntity):
     @property
     def last_reset(self):
         # For TOTAL today's sensor only, never for a historical snapshot.
-        if self._offset != 0 or not self.available:
+        if self._offset != 0 or not self.available or self.native_value is None:
+            # No current-day meter reading: leave the day unknown, not reset.
             return None
         return datetime.combine(datetime.now(UTC).date(), time.min, tzinfo=UTC)
 
