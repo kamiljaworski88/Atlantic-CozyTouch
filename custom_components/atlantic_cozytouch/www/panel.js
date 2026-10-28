@@ -1,7 +1,7 @@
 /* Atlantic CozyTouch monitoring panel. Uses HA-provided state only, no network access. */
 const GROUPS = [
   ["Komfort i temperatury", /temperatur|temperature|room|pokoj|zasilani|powrot|zewnetrz/i],
-  ["Ogrzewanie CO", /\\bco\\b|ogrzewani|heating|obieg|krzyw/i],
+  ["Ogrzewanie CO", /\bco\b|ogrzewani|heating|obieg|krzyw/i],
   ["Ciepła woda CWU", /cwu|ciep.a woda|hot.water|dhw|zasobnik/i],
   ["Energia i COP", /energia|energy|cop|electric|elektrycz|ciepl|produkcj|kwh/i],
   ["Sprężarka i grzałki", /spr.zark|compressor|grza.k|heater|defrost|odszran/i],
@@ -9,7 +9,7 @@ const GROUPS = [
 ];
 function belongs(s) {
   const id = s.entity_id.toLowerCase(), name = (s.attributes.friendly_name || "").toLowerCase();
-  return /^(sensor|binary_sensor)\\./.test(id) &&
+  return /^(sensor|binary_sensor)\./.test(id) &&
     (/atlantic|cozytouch|alfea|extensa/.test(id) || /atlantic|cozytouch|alfea|extensa/.test(name));
 }
 function div(tag, cls, label) {
@@ -24,7 +24,7 @@ class AtlanticCozytouchMonitor extends HTMLElement {
     this._hass = value;
     if (!this.isConnected) return;
     const sensors = Object.values(value.states).filter(belongs);
-    const key = sensors.map(s => [s.entity_id,s.state].join("=")).join("|");
+    const key = sensors.map(s => [s.entity_id,s.state,s.attributes.friendly_name,s.attributes.unit_of_measurement].join("=")).join("|");
     if (key !== this._last) { this._last = key; this.draw(sensors); }
   }
   connectedCallback() { if (this._hass) this.draw(Object.values(this._hass.states).filter(belongs)); }
