@@ -2,7 +2,7 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.25 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.26 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
 
 ## Niezależny audyt 26.10.2026 (gałąź audytowa)
 
@@ -28,6 +28,12 @@ Nie odblokowuje COP ani sterowania pompą.
 - Połączenia HTTPS używają standardowej weryfikacji certyfikatów; przekierowania HTTP są blokowane.
 - Hasło jest przechowywane przez mechanizm konfiguracji Home Assistant. Chroń `.storage` i kopie zapasowe; nie udostępniaj diagnostycznych logów bez kontroli.
 - Brak automatycznych aktualizacji kodu z repozytorium upstream. Sprawdź [model zagrożeń](docs/SECURITY.md).
+
+## v0.5.26 — naprawa historii CWU w dashboardzie
+
+- Poprawka sensora `Energia elektryczna CWU · dzisiaj (UTC)`: jeśli Atlantic zwrócił poprawną historię, ale nie podał dzisiejszego rekordu CWU, sensor pozostaje dostępny z wartością `unknown` (a **nie** 0 kWh) oraz atrybutem `historia_ostatnich_7_dni_utc` ze starszymi dniami.
+- Naprawia znikającą kolumnę CWU z dynamicznego dashboardu, który odczytuje historię z atrybutu dzisiejszego sensora. Analogiczne działanie dla CO. Gdy API jest niedostępne lub zwróciło błąd, sensor nadal pozostaje niedostępny.
+- Nie dodaje żadnych żądań do chmury, nie tworzy sztucznych pomiarów, nie zmienia COP1/COP2 ani statystyk HA Energy. Prawdziwe `0 kWh` pozostaje odróżnialne od braku rekordu. Nie ustawia `last_reset` dla brakującego dnia.
 
 ## v0.5.25 — COP2: próg obserwacji doby 80% zamiast 95%
 
