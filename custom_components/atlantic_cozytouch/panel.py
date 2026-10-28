@@ -14,9 +14,13 @@ ASSET_URL = "/atlantic-cozytouch-assets/panel.js"
 
 async def async_setup_panel(hass: HomeAssistant) -> None:
     """Expose bundled frontend panel; do not mutate Lovelace dashboards."""
-    await hass.http.async_register_static_paths(
-        [StaticPathConfig(ASSET_URL, str(Path(__file__).parent / "www" / "panel.js"), False)]
-    )
+    try:
+        await hass.http.async_register_static_paths(
+            [StaticPathConfig(ASSET_URL, str(Path(__file__).parent / "www" / "panel.js"), False)]
+        )
+    except ValueError:
+        # A previously registered static path survives a config-entry reload.
+        pass
     await panel_custom.async_register_panel(
         hass,
         webcomponent_name="atlantic-cozytouch-monitor",
