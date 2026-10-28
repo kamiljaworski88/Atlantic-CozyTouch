@@ -647,11 +647,15 @@ class AtlanticDailyElectricitySensor(CoordinatorEntity, SensorEntity):
 
     @property
     def available(self) -> bool:
+        # Do not hide all historical attribute data just because Atlantic
+        # omitted today's CWU/CO period. There can be valid older days even
+        # when today's native_value is legitimately unknown (NOT zero).
+        # Keep the entity available while the history endpoint is healthy;
+        # native_value below still returns None for a missing day.
         return (
             super().available
             and getattr(self.coordinator, "atlantic_consumptions", {}).get("state")
             == "dostepna"
-            and self._day in self._values
         )
 
     @property
