@@ -36,7 +36,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     energy_monitor = EnergyValidationMonitor()
     cop_monitor = HydraulicCopEstimator(
         allow_unique_cross_device=(
-            entry.options.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
+            entry.options.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP, True) is True
         )
     )
 
@@ -54,7 +54,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     if saved_last is not None:
         cop_monitor.restore_last_cops(saved_last)
 
-    cop2_enabled = entry.options.get(OPT_COP2) is True
+    cop2_enabled = entry.options.get(OPT_COP2, True) is True
     cop2 = Cop2Telemetry(
         allow_cross=entry.options.get(OPT_EXPERIMENTAL_CROSS_DEVICE_COP) is True
     ) if cop2_enabled else None

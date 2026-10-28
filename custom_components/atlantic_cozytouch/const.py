@@ -14,10 +14,11 @@ ATLANTIC_PUBLIC_CLIENT_ID = (
 POLL_SECONDS = 180
 HTTP_TIMEOUT_SECONDS = 15
 
-# Explicit user opt-in; no automatic cross-logical-device COP pairing.
+# Enabled by default for automatic discovery; explicit False disables it.
+# Estimates remain experimental and require the estimator's uniqueness/quality checks.
 OPT_EXPERIMENTAL_CROSS_DEVICE_COP = "experimental_cross_device_cop"
 
 OPT_API_DISCOVERY = "experimental_api_discovery"
 
-# Isolated, explicitly opted-in local recorder and alternative COP2.
+# Isolated local recorder and alternative COP2, enabled by default; explicit opt-out.
 OPT_COP2 = "experimental_cop2"
