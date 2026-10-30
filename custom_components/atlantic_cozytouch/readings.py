@@ -206,9 +206,20 @@ def extract_devices(payload: object) -> list[dict]:
                     values[cap_id] = normalize_value(cap_id, cap.get("value"))
 
         if values or reported_ids:
+            master_device_id = item.get("masterDeviceId")
+            safe_master_id = None
+            if not isinstance(master_device_id, bool) and isinstance(
+                master_device_id, (str, int)
+            ):
+                candidate = str(master_device_id).strip()
+                if candidate and len(candidate) <= 128 and candidate.isprintable():
+                    safe_master_id = candidate
             result.append(
                 {
                     "id": safe_id,
+                    # Internal topology evidence only. It is never exported by
+                    # diagnostics or persisted in COP2 telemetry.
+                    "master_id": safe_master_id,
                     "name": str(item.get("name") or "Atlantic")[:100],
                     "values": values,
                     "energy_status": energy_status,

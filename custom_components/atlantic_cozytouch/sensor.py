@@ -76,6 +76,10 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_co"),
         AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_cwu"),
         AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_total"),
+        AtlanticThermalEnergyQualitySensor(coordinator, entry.entry_id),
+        AtlanticEstimatedThermalEnergySensor(coordinator, entry.entry_id, "co"),
+        AtlanticEstimatedThermalEnergySensor(coordinator, entry.entry_id, "cwu"),
+        AtlanticEstimatedThermalEnergySensor(coordinator, entry.entry_id, "total"),
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
@@ -924,4 +928,102 @@ class AtlanticCop2EstimateSensor(CoordinatorEntity, SensorEntity):
             "nie_jest_pomiarem_producenta": True,
             "zrodlo_pradu": "historia_dzienna_Magellan",
             "wymagana_walidacja_hydrauliki": True,
+        }
+
+
+class AtlanticThermalEnergyQualitySensor(CoordinatorEntity, SensorEntity):
+    """Strict publication gate for hydraulic thermal-energy estimates."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Energia cieplna Atlantic · jakość źródła"
+    _attr_icon = "mdi:check-decagram-outline"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+
+    def __init__(self, coordinator, entry_id):
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_thermal_energy_quality"
+
+    @property
+    def native_value(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        if recorder is None:
+            return "wylaczone"
+        return recorder.result.get("thermal_energy_status", "oczekiwanie")
+
+    @property
+    def extra_state_attributes(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        result = recorder.result if recorder is not None else {}
+        return {
+            "data_utc": result.get("day_utc"),
+            "pokrycie_procent": result.get("coverage_pct"),
+            "wymagane_pokrycie_procent": result.get(
+                "thermal_energy_minimum_coverage_pct", 95
+            ),
+            "potwierdzenie_topologii_procent": result.get(
+                "topology_verified_pct"
+            ),
+            "nieznany_stan_sprezarki_procent": result.get(
+                "unknown_compressor_pct"
+            ),
+            "zaakceptowane_segmenty": result.get("segments"),
+            "brakujace_sekundy": result.get("missing_seconds"),
+            "gotowe_do_publikacji": result.get("thermal_energy_ready", False),
+            "metoda": "przeplyw_ID112_x_deltaT_ID109_ID116_calka_trapezowa",
+            "nie_jest_pomiarem_producenta": True,
+            "do_rozliczen": False,
+        }
+
+
+class AtlanticEstimatedThermalEnergySensor(CoordinatorEntity, SensorEntity):
+    """Completed-day hydraulic heat, gated at 95% and verified topology."""
+
+    _attr_has_entity_name = True
+    _attr_icon = "mdi:heat-wave"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_native_unit_of_measurement = "kWh"
+    _LABELS = {
+        "co": "Energia cieplna Atlantic · CO (szacunek)",
+        "cwu": "Energia cieplna Atlantic · CWU (szacunek)",
+        "total": "Energia cieplna Atlantic · łącznie (szacunek)",
+    }
+    _KEYS = {
+        "co": "publishable_thermal_co_kwh",
+        "cwu": "publishable_thermal_cwu_kwh",
+        "total": "publishable_thermal_total_kwh",
+    }
+
+    def __init__(self, coordinator, entry_id, circuit):
+        super().__init__(coordinator)
+        self._circuit = circuit
+        self._attr_name = self._LABELS[circuit]
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_thermal_energy_{circuit}"
+        # Deliberately no device_class/state_class: this estimate must not be
+        # admitted to HA Energy or long-term energy statistics.
+
+    @property
+    def native_value(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        if recorder is None:
+            return None
+        return recorder.result.get(self._KEYS[self._circuit])
+
+    @property
+    def extra_state_attributes(self):
+        recorder = getattr(self.coordinator, "atlantic_cop2", None)
+        result = recorder.result if recorder is not None else {}
+        return {
+            "data_utc": result.get("day_utc"),
+            "status_jakosci": result.get("thermal_energy_status", "wylaczone"),
+            "pokrycie_procent": result.get("coverage_pct"),
+            "potwierdzenie_topologii_procent": result.get(
+                "topology_verified_pct"
+            ),
+            "nieznany_stan_sprezarki_procent": result.get(
+                "unknown_compressor_pct"
+            ),
+            "metoda": "hydrauliczna_woda_ID112_ID109_ID116",
+            "energia_nieekstrapolowana": True,
+            "nie_jest_pomiarem_producenta": True,
+            "do_rozliczen": False,
         }

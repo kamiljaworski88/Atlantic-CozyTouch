@@ -1,5 +1,14 @@
 # COP2 0.5.25 — alternatywny szacunek sprawności (bez modyfikacji COP1)
 
+## Uzupełnienie 0.5.26 — energia cieplna jako osobne sensory
+
+CO, CWU i suma są publikowane jako diagnostyczne szacunki kWh dopiero po
+osiągnięciu 95% pokrycia zakończonej doby i 100% pokrycia segmentami z jawnie
+potwierdzoną relacją topologiczną modułów (`masterDeviceId` albo wspólny moduł).
+Braków nie ekstrapoluje się. Encje nie mają `device_class` ani `state_class` i
+nie są licznikiem producenta ani źródłem dla HA Energy. Osobny sensor jakości
+wyjaśnia blokadę: pokrycie, topologia, liczba segmentów i nieznany stan sprężarki.
+
 ## Zadanie
 Zbudować niezależny od `cop_snapshot.py` rejestr telemetrii i kalkulator COP2. Dotychczasowy COP1 opiera się na przypisaniu przyrostów raw 57/59 do hydrauliki między snapshotami, ale synchronizacja chmurowych skoków z fizyczną energią nie jest dowiedziona. **COP2 celowo korzysta z innego mianownika**: zużycia CO/CWU z historii dziennej Atlantic w `energy_daily.py`.
 
