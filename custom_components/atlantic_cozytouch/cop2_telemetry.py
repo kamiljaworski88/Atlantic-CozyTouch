@@ -47,11 +47,31 @@ def _match(devices, required):
     return matches[0] if len(matches) == 1 else None
 
 
+def _topology_verified(interface, generator):
+    """Use only explicit setup hierarchy; never infer a hydraulic relation."""
+    interface_id = interface.get("id")
+    generator_id = generator.get("id")
+    if interface_id == generator_id:
+        return True
+    interface_master = interface.get("master_id")
+    generator_master = generator.get("master_id")
+    return bool(
+        (interface_master and interface_master == generator_id)
+        or (generator_master and generator_master == interface_id)
+        or (
+            interface_master
+            and generator_master
+            and interface_master == generator_master
+        )
+    )
+
+
 def _capture(devices, now, allow_cross):
     """Match one interface and one generator; never export their identifiers."""
     row = {"t": int(now.timestamp()), "mode": None, "f": None,
            "s": None, "r": None, "eco": None, "ecwu": None,
            "compressor": None, "heater": None, "chg": {},
+           "topology_verified": False,
            "valid": False, "reason": "brak_zrodel"}
     interface = _match(devices, {57, 59, 91, 112})
     generator = _match(devices, {109, 116})
@@ -60,6 +80,7 @@ def _capture(devices, now, allow_cross):
     if interface.get("id") != generator.get("id") and not allow_cross:
         row["reason"] = "niepotwierdzone_powiazanie_obiegu"
         return row
+    row["topology_verified"] = _topology_verified(interface, generator)
     iv, gv = interface.get("values", {}), generator.get("values", {})
     row["mode"] = iv.get(91) if iv.get(91) in ("CO", "CWU") else None
     row["f"] = _num(iv.get(112), 0, 80)
@@ -140,7 +161,7 @@ def _day_energy(samples, day):
     start = int(datetime.fromisoformat(day).replace(tzinfo=UTC).timestamp())
     end = start + 86400
     totals = {"CO": 0.0, "CWU": 0.0}
-    covered_s, low_trust_s, segments = 0, 0, 0
+    covered_s, low_trust_s, topology_verified_s, segments = 0, 0, 0, 0
     for a, b in zip(samples, samples[1:]):
         if a["t"] >= end or b["t"] <= start:
             continue
@@ -155,11 +176,16 @@ def _day_energy(samples, day):
         totals[mode] += kw * seconds / 3600.0
         covered_s += seconds
         low_trust_s += seconds if unknown_compressor else 0
+        if a.get("topology_verified") is True and b.get("topology_verified") is True:
+            topology_verified_s += seconds
         segments += 1
     return {
         "covered_s": covered_s,
         "coverage_pct": round(100 * covered_s / 86400, 2),
         "unknown_compressor_pct": round(100 * low_trust_s / max(1, covered_s), 2),
+        "topology_verified_pct": round(
+            100 * topology_verified_s / max(1, covered_s), 2
+        ),
         "segments": segments,
         "thermal_kwh": {key: round(value, 3) for key, value in totals.items()},
     }
@@ -219,8 +245,10 @@ class Cop2Telemetry:
             # Canonical, restricted schema; never restore extra/untrusted keys.
             recent.append({k: row.get(k) for k in (
                 "t", "mode", "f", "s", "r", "eco", "ecwu",
-                "compressor", "heater", "valid", "reason"
+                "compressor", "heater", "valid", "reason",
+                "topology_verified"
             )} | {"chg": dict(stamps)})
+            recent[-1]["topology_verified"] = row.get("topology_verified") is True
         recent.sort(key=lambda x: x["t"])
         self.samples = [r for i, r in enumerate(recent)
                         if i == 0 or r["t"] > recent[i-1]["t"]][-MAX_SAMPLES:]
@@ -256,6 +284,20 @@ class Cop2Telemetry:
             ready and calc["covered_s"] < 86400 * NEAR_COMPLETE_DAY_COVERAGE
         )
         totals = calc["thermal_kwh"]
+        strict_thermal_ready = (
+            calc["covered_s"] >= 86400 * NEAR_COMPLETE_DAY_COVERAGE
+            and calc["segments"] > 0
+            and calc["topology_verified_pct"] == 100.0
+        )
+        if calc["covered_s"] < 86400 * NEAR_COMPLETE_DAY_COVERAGE:
+            thermal_status = "niewystarczajace_pokrycie_95"
+        elif calc["topology_verified_pct"] < 100.0:
+            thermal_status = "niepotwierdzone_powiazanie_modulow"
+        elif totals["CO"] < 0 or totals["CWU"] < 0:
+            strict_thermal_ready = False
+            thermal_status = "ujemny_bilans_ciepla"
+        else:
+            thermal_status = "szacunek_hydrauliczny_gotowy_niska_pewnosc"
         ratios = {"CO": None, "CWU": None, "TOTAL": None}
         if ready:
             for mode, energy in (("CO", co_e), ("CWU", cwu_e)):
@@ -315,8 +357,24 @@ class Cop2Telemetry:
             "thermal_energy_extrapolated": False,
             "segments": calc["segments"],
             "unknown_compressor_pct": calc["unknown_compressor_pct"],
+            "topology_verified_pct": calc["topology_verified_pct"],
+            "thermal_energy_status": thermal_status,
+            "thermal_energy_ready": strict_thermal_ready,
+            "thermal_energy_minimum_coverage_pct": round(
+                100 * NEAR_COMPLETE_DAY_COVERAGE
+            ),
             "estimated_thermal_co_kwh": totals["CO"] if ready else None,
             "estimated_thermal_cwu_kwh": totals["CWU"] if ready else None,
+            "publishable_thermal_co_kwh": (
+                totals["CO"] if strict_thermal_ready else None
+            ),
+            "publishable_thermal_cwu_kwh": (
+                totals["CWU"] if strict_thermal_ready else None
+            ),
+            "publishable_thermal_total_kwh": (
+                round(totals["CO"] + totals["CWU"], 3)
+                if strict_thermal_ready else None
+            ),
             "electric_co_kwh": co_e,
             "electric_cwu_kwh": cwu_e,
             "cop2_co": ratios["CO"],

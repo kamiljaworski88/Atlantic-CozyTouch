@@ -2,7 +2,20 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.26 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP nie jest pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.29 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+
+## v0.5.29 — osobne sensory szacowanej energii cieplnej
+
+- Dodano zakończonodobowe sensory `Energia cieplna Atlantic · CO (szacunek)`,
+  `CWU (szacunek)` i `łącznie (szacunek)` oraz sensor `jakość źródła`.
+- Energia jest całkowana wyłącznie z zaakceptowanych odcinków ID112 ×
+  (ID109−ID116). Nie uzupełnia braków i nie jest licznikiem producenta.
+- Liczba pojawia się dopiero przy co najmniej 95% pokrycia doby i 100%
+  segmentów ze zweryfikowaną topologią. Dla osobnych modułów weryfikacja
+  wymaga jawnej relacji `masterDeviceId` w odpowiedzi Atlantic; samo włączenie
+  opcji cross-device nie wystarcza.
+- Sensory są diagnostyczne, bez `device_class` i `state_class`, więc nie trafiają
+  do HA Energy ani statystyk długoterminowych.
 
 ## Niezależny audyt 26.10.2026 (gałąź audytowa)
 

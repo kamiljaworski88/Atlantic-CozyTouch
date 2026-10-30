@@ -16,7 +16,7 @@ DAILY = {1: {"2026-10-26": 20.0}, 2: {"2026-10-26": 4.0}}
 
 
 def readings(moment, *, mode="CO", flow=10., supply=35., ret=30.,
-             compressor=None, heater=None, cross=False, fail=None):
+             compressor=None, heater=None, cross=False, linked=False, fail=None):
     t = int(moment.timestamp()) - 30
     interface = {"id": "SENSITIVE_INTERFACE_ID", "name": "PRIVATE_PERSON",
                  "reported_capability_ids": [57, 59, 91, 112],
@@ -27,6 +27,8 @@ def readings(moment, *, mode="CO", flow=10., supply=35., ret=30.,
                  "reported_capability_ids": [109, 116],
                  "values": {109: supply, 116: ret},
                  "updated_at": {109: t, 116: t}}
+    if linked and cross:
+        generator["master_id"] = interface["id"]
     if compressor is not None:
         generator["values"][51] = compressor
         generator["reported_capability_ids"].append(51)
@@ -72,6 +74,44 @@ class Cop2Contract(unittest.TestCase):
         self.assertEqual(result["status"], "szacunek_niska_pewnosc")
         self.assertEqual(result["unknown_compressor_pct"], 100)
         self.assertTrue(result["not_vendor_cop"])
+        self.assertFalse(result["thermal_energy_ready"])
+        self.assertEqual(
+            result["thermal_energy_status"],
+            "niepotwierdzone_powiazanie_modulow",
+        )
+
+    def test_strict_thermal_energy_requires_95_percent_and_verified_topology(self):
+        rec = mod.Cop2Telemetry(allow_cross=True)
+        for i in range(481):
+            t = DAY + timedelta(minutes=3*i)
+            mode = "CO" if i < 400 else "CWU"
+            rec.ingest(readings(t, mode=mode, cross=True, linked=True), t, DAILY)
+        result = rec.result
+        self.assertTrue(result["thermal_energy_ready"])
+        self.assertEqual(result["topology_verified_pct"], 100.0)
+        self.assertEqual(
+            result["thermal_energy_status"],
+            "szacunek_hydrauliczny_gotowy_niska_pewnosc",
+        )
+        self.assertEqual(
+            result["publishable_thermal_total_kwh"],
+            round(
+                result["publishable_thermal_co_kwh"]
+                + result["publishable_thermal_cwu_kwh"],
+                3,
+            ),
+        )
+
+    def test_strict_thermal_energy_stays_unknown_below_95_percent(self):
+        rec = self._partial_day(385)
+        result = rec.result
+        self.assertFalse(result["thermal_energy_ready"])
+        self.assertEqual(
+            result["thermal_energy_status"], "niewystarczajace_pokrycie_95"
+        )
+        self.assertIsNone(result["publishable_thermal_co_kwh"])
+        self.assertIsNone(result["publishable_thermal_cwu_kwh"])
+        self.assertIsNone(result["publishable_thermal_total_kwh"])
 
     def _partial_day(self, sample_count):
         rec = mod.Cop2Telemetry(allow_cross=True)
