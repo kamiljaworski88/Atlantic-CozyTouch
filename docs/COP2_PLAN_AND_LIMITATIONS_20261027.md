@@ -1,9 +1,9 @@
 # COP2 0.5.25 — alternatywny szacunek sprawności (bez modyfikacji COP1)
 
-## Uzupełnienie 0.5.26 — energia cieplna jako osobne sensory
+## Uzupełnienie 0.5.30 — energia cieplna jako osobne sensory
 
 CO, CWU i suma są publikowane jako diagnostyczne szacunki kWh dopiero po
-osiągnięciu 95% pokrycia zakończonej doby i 100% pokrycia segmentami z jawnie
+osiągnięciu 94% pokrycia zakończonej doby i 100% pokrycia segmentami z jawnie
 potwierdzoną relacją topologiczną modułów (`masterDeviceId` albo wspólny moduł).
 Braków nie ekstrapoluje się. Encje nie mają `device_class` ani `state_class` i
 nie są licznikiem producenta ani źródłem dla HA Energy. Osobny sensor jakości
