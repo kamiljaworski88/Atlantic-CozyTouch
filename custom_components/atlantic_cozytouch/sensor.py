@@ -82,6 +82,8 @@ async def async_setup_entry(hass, entry, async_add_entities):
         AtlanticEstimatedThermalEnergySensor(coordinator, entry.entry_id, "total"),
         AtlanticLastPollSensor(coordinator, entry.entry_id),
         AtlanticCapabilityInventorySensor(coordinator, entry.entry_id),
+        AtlanticDefrostObserverSensor(coordinator, entry.entry_id),
+        AtlanticDefrostTemperatureDeltaSensor(coordinator, entry.entry_id),
         AtlanticTelemetryFreshnessSensor(coordinator, entry.entry_id),
         AtlanticConsumptionProbeSensor(coordinator, entry.entry_id),
         AtlanticThermalProductionSupportSensor(coordinator, entry.entry_id),
@@ -198,6 +200,59 @@ class AtlanticLastPollSensor(CoordinatorEntity, SensorEntity):
     @property
     def native_value(self):
         return getattr(self.coordinator, "atlantic_last_success_at", None)
+
+
+class AtlanticDefrostObserverSensor(CoordinatorEntity, SensorEntity):
+    """Cloud-only, unconfirmed hypotheses. Never suitable as an actuator input."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Atlantic · obserwator odszraniania"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:snowflake-alert"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_defrost_observer"
+
+    @property
+    def native_value(self):
+        observer = getattr(self.coordinator, "atlantic_defrost_observer", None)
+        return observer.status if observer is not None else "niedostepny"
+
+    @property
+    def extra_state_attributes(self):
+        observer = getattr(self.coordinator, "atlantic_defrost_observer", None)
+        return observer.report() if observer is not None else {
+            "defrost_potwierdzony": False, "sygnal_do_sterowania": False
+        }
+
+
+class AtlanticDefrostTemperatureDeltaSensor(CoordinatorEntity, SensorEntity):
+    """Observed hydraulic delta T, not a manufacturer defrost indication."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Atlantic · różnica temperatur zasilanie minus powrót"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:thermometer-lines"
+    _attr_native_unit_of_measurement = "°C"
+    _attr_state_class = SensorStateClass.MEASUREMENT
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_defrost_hydraulic_delta"
+
+    @property
+    def native_value(self):
+        observer = getattr(self.coordinator, "atlantic_defrost_observer", None)
+        return observer.delta_t if observer is not None else None
+
+    @property
+    def extra_state_attributes(self):
+        return {
+            "pomiar": "roz_roznica_zasilanie_minus_powrot",
+            "defrost_potwierdzony": False,
+            "uwaga": "Ujemna roznica nie potwierdza defrostu",
+        }
 
 
 class AtlanticCapabilityInventorySensor(CoordinatorEntity, SensorEntity):

@@ -2,7 +2,15 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.30 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.31 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+
+## v0.5.31 — obserwator defrostu (bez sterowania, bez czujników)
+
+- Dodano diagnostyczny sensor `Atlantic · obserwator odszraniania` (zawsze brak potwierdzenia defrostu; stan hipotezy to wyłącznie sygnał do ręcznej oceny).
+- Dodano sensor `Atlantic · różnica temperatur zasilanie minus powrót`, liczony **tylko** z jednego modułu, który zgłasza obie temperatury 109 i 116.
+- Obserwacje są zbierane z dotychczasowego odczytu chmury co 180 s, w ograniczonym buforze pamięci, bez nowych żądań API, bez przekazywania identyfikatorów urządzeń do HA. Panel `PC Atlantic` pokazuje stan i wykres ΔT.
+- **Nie dodano żadnego automatycznego sterowania Shelly**; hipoteza może być fałszywa, API może być opóźnione.
+- [Instrukcja, testy i ograniczenia](docs/DEFROST_OBSERVER_V0531.md).
 
 ## v0.5.30 — próg publikacji energii cieplnej 94%
 

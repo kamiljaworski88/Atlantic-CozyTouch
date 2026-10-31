@@ -16,6 +16,7 @@ from homeassistant.helpers.storage import Store
 from .api import AtlanticAuthError, AtlanticError, AtlanticReadOnlyClient
 from .const import DOMAIN, POLL_SECONDS, OPT_EXPERIMENTAL_CROSS_DEVICE_COP, OPT_API_DISCOVERY, OPT_COP2
 from .compressor import CompressorMonitor
+from .defrost_observer import DefrostApiObserver
 from .cop_snapshot import HydraulicCopEstimator
 from .cop2_telemetry import Cop2Telemetry
 from .energy_validation import EnergyValidationMonitor
@@ -34,6 +35,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     )
 
     compressor_monitor = CompressorMonitor()
+    defrost_observer = DefrostApiObserver()
     energy_monitor = EnergyValidationMonitor()
     cop_monitor = HydraulicCopEstimator(
         allow_unique_cross_device=(
@@ -84,6 +86,8 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
             }
             compressor_monitor.ingest(devices, observed_at)
             energy_monitor.ingest(devices, observed_at)
+            # Dry-run hypothesis recorder; never changes the pump or Shelly.
+            defrost_observer.ingest(devices, observed_at)
             if cop2 is not None:
                 # COP2 never mutates existing COP1 state, statistics or Energy.
                 cop2.ingest(devices, observed_at, coordinator.atlantic_daily_energy)
@@ -128,6 +132,7 @@ async def async_setup_entry(hass: HomeAssistant, entry: ConfigEntry) -> bool:
     coordinator.atlantic_cop2_store = cop2_store if cop2_enabled else None
     coordinator.atlantic_cop2_last_persist = datetime.min.replace(tzinfo=UTC)
     coordinator.atlantic_compressor = compressor_monitor
+    coordinator.atlantic_defrost_observer = defrost_observer
     coordinator.atlantic_energy = energy_monitor
     coordinator.atlantic_hydraulic_cop = cop_monitor
     coordinator.atlantic_cop_store = cop_store
