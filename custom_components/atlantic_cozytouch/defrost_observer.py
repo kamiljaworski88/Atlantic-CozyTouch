@@ -114,6 +114,13 @@ class DefrostApiObserver:
             and outdoor is not None
             and outdoor <= OUTSIDE_LIMIT_C
             and mode == "CO"
+            # At least one hydraulic reading must have changed recently.
+            # This is not proof of freshness, merely an additional safeguard.
+            and any(
+                type(changes.get(cap)) is int
+                and 0 <= int(stamp.timestamp()) - changes[cap] <= 15 * 60
+                for cap in (109, 116)
+            )
             and prev is not None
             and prev.get("delta_t_c") is not None
             and prev["delta_t_c"] <= NEGATIVE_DELTA_THRESHOLD_C
