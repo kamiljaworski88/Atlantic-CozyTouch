@@ -70,3 +70,31 @@ Niepotwierdzone: czy ID65 występuje na tym urządzeniu, czy oznacza wentylator 
 ## Następny nieinwazyjny test
 
 Pobrać *diagnostics* z własnej integracji i odczytać same listy ID per urządzenie. Nie trzeba ponownie uruchamiać `experimental_api_discovery`, zmieniać częstotliwości odczytu, montować czujnika ani przesyłać poświadczeń. Dalsze wdrożenie obserwatora wyłącznie po potwierdzeniu dostępności sygnału oraz osobnej akceptacji zmian kodu.
+
+## Uzupełnienie: wyniki diagnostyki rzeczywistej pompy, 31.10.2026, HA v0.5.30
+
+Użytkownik przekazał standardowy eksport Home Assistant `diagnostics_format=5` z `last_poll_ok=true`. Zredagowana analiza **samych identyfikatorów** (bez metadanych konta, wartości ani seriali):
+
+| Moduł (kolejność w anonimowym eksporcie) | Liczba ID | Parametry przydatne do weryfikacji |
+| --- | ---: | --- |
+| 1 | 52 | 91, 109, 112, 119, 180, **380**, 370, 381 |
+| 2 | 4 | 109 |
+| 3 | 78 | 153, 181, 350 |
+| 4 | 44 | brak istotnej telemetrii defrostu |
+| 5 | 13 | 49, 50, 100, 109, 116 |
+
+**Wniosek stanowczy dla tego eksportu:** ID **65**, **51**, **72** nie występują w żadnym z pięciu zestawów `known_capability_ids + unmapped_capability_ids`; `compressor_capability_ids=[]` dla każdego. Tym samym nie da się oprzeć aktualnego detektora na wentylatorze/sprężarce z danych widocznych w tym eksporcie. Nie przesądza to o odpowiedzi *innych, dozwolonych* endpointów lub stanach niewidocznych w bieżącym snapshot.
+
+Porównanie z publiczną tabelą `gduteil/cozytouch/custom_components/cozytouch/capability_table.py`:
+- **380 = `outdoor_unit_error_code_cesa`** — kod **usterki** jednostki zewnętrznej, nie znacznik odszraniania. Nie używać go do startu kabla; jego obecność nie zwiększa wiarygodności detektora.
+- **370 = `hub_movable_subproducts`** — niezwiązany z defrostem.
+- **381 = `ble_pairing_compatibility`** — niezwiązany z defrostem.
+- **49 = `generator_flame_status`, 50 = `generator_modulation_level`** — ogólne mapowanie generatora, **nie** udowodniony fizyczny stan sprężarki tej pompy. Nie zastępować nimi 51/72.
+- **90 = `generator_dhw_burner_starts`, 299 = `heat_cool_switch_type`, 350 = `air_circulation_supported_speeds`** — nie opisują bieżącego defrostu.
+- ID 180 to błąd jednostki zewnętrznej; 91 wybór CO/CWU; 109/116 temperatury wody (nie wymiennika zewnętrznego).
+
+**Ważne ograniczenie diagnostyki:** standardowy eksport nie zawiera wartości capability ani pełnej historii, więc nie da się w nim zweryfikować spadków temperatur, czasu defrostu ani semantyki dynamicznych kodów.
+
+**Zmieniony plan:** Nie dodawać `binary_sensor.defrost` pod pozorem pomiaru. Jeżeli użytkownik chce nadal badać API, dodać *tylko* lokalny, diagnostyczny rejestr zmian już dostępnych 91/109/116/119/181 z czasem faktycznego otrzymania przez HA, a następnie ręcznie skorelować je z min. 5 obserwowanymi rzeczywistymi defrostami. Bez ID 65/51/72 jego czułość i swoistość mogą być niewystarczające do sterowania Shelly. Równolegle projekt zabezpieczenia antyzamarzaniowego opartego na istniejącym zewnętrznym termometrze (niezależne od zdarzeń defrostu) i na zasadach instalacyjnych, pamiętając o ryzyku awarii HA/chmury.
+
+Nie zmieniono uruchomionej integracji, częstotliwości API, panelu HA ani sterowania Shelly.
