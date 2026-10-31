@@ -4,7 +4,15 @@ Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządz
 
 > **Wersja 0.5.31 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
 
-## v0.5.31 — obserwator defrostu (bez sterowania, bez czujników)\n\n- Dodano diagnostyczny sensor `Atlantic · obserwator odszraniania` (zawsze brak potwierdzenia defrostu; stan hipotezy to wyłącznie sygnał do ręcznej oceny).\n- Dodano sensor `Atlantic · różnica temperatur zasilanie minus powrót`, liczony **tylko** z jednego modułu, który zgłasza obie temperatury 109 i 116.\n- Obserwacje są zbierane z dotychczasowego odczytu chmury co 180 s, w ograniczonym buforze pamięci, bez nowych żądań API, bez przekazywania identyfikatorów urządzeń do HA. Panel `PC Atlantic` pokazuje stan i wykres ΔT.\n- **Nie dodano żadnego automatycznego sterowania Shelly**; hipoteza może być fałszywa, API może być opóźnione.\n- [Instrukcja, testy i ograniczenia](docs/DEFROST_OBSERVER_V0531.md).\n\n## v0.5.30 — próg publikacji energii cieplnej 94%
+## v0.5.31 — obserwator defrostu (bez sterowania, bez czujników)
+
+- Dodano diagnostyczny sensor `Atlantic · obserwator odszraniania` (zawsze brak potwierdzenia defrostu; stan hipotezy to wyłącznie sygnał do ręcznej oceny).
+- Dodano sensor `Atlantic · różnica temperatur zasilanie minus powrót`, liczony **tylko** z jednego modułu, który zgłasza obie temperatury 109 i 116.
+- Obserwacje są zbierane z dotychczasowego odczytu chmury co 180 s, w ograniczonym buforze pamięci, bez nowych żądań API, bez przekazywania identyfikatorów urządzeń do HA. Panel `PC Atlantic` pokazuje stan i wykres ΔT.
+- **Nie dodano żadnego automatycznego sterowania Shelly**; hipoteza może być fałszywa, API może być opóźnione.
+- [Instrukcja, testy i ograniczenia](docs/DEFROST_OBSERVER_V0531.md).
+
+## v0.5.30 — próg publikacji energii cieplnej 94%
 
 - Minimalne pokrycie zakończonej doby dla sensorów energii cieplnej obniżono
   z 95% do 94%. Wymóg 100% potwierdzonej topologii pozostaje bez zmian.
