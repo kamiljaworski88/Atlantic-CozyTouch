@@ -80,7 +80,7 @@ class Cop2Contract(unittest.TestCase):
             "niepotwierdzone_powiazanie_modulow",
         )
 
-    def test_strict_thermal_energy_requires_95_percent_and_verified_topology(self):
+    def test_strict_thermal_energy_requires_94_percent_and_verified_topology(self):
         rec = mod.Cop2Telemetry(allow_cross=True)
         for i in range(481):
             t = DAY + timedelta(minutes=3*i)
@@ -102,22 +102,33 @@ class Cop2Contract(unittest.TestCase):
             ),
         )
 
-    def test_strict_thermal_energy_stays_unknown_below_95_percent(self):
-        rec = self._partial_day(385)
+    def test_strict_thermal_energy_stays_unknown_below_94_percent(self):
+        rec = self._partial_day(452, linked=True)
         result = rec.result
+        self.assertLess(result["coverage_pct"], 94)
+        self.assertEqual(result["topology_verified_pct"], 100.0)
         self.assertFalse(result["thermal_energy_ready"])
         self.assertEqual(
-            result["thermal_energy_status"], "niewystarczajace_pokrycie_95"
+            result["thermal_energy_status"], "niewystarczajace_pokrycie_94"
         )
         self.assertIsNone(result["publishable_thermal_co_kwh"])
         self.assertIsNone(result["publishable_thermal_cwu_kwh"])
         self.assertIsNone(result["publishable_thermal_total_kwh"])
 
-    def _partial_day(self, sample_count):
+    def test_strict_thermal_energy_accepts_first_interval_above_94_percent(self):
+        rec = self._partial_day(453, linked=True)
+        result = rec.result
+        self.assertGreaterEqual(result["coverage_pct"], 94)
+        self.assertTrue(result["thermal_energy_ready"])
+        self.assertEqual(
+            result["thermal_energy_minimum_coverage_pct"], 94
+        )
+
+    def _partial_day(self, sample_count, *, linked=False):
         rec = mod.Cop2Telemetry(allow_cross=True)
         for i in range(sample_count):
             t = DAY + timedelta(minutes=i*3)
-            rec.ingest(readings(t, mode="CO", cross=True),
+            rec.ingest(readings(t, mode="CO", cross=True, linked=linked),
                        t, DAILY)
         rec.evaluate(DAILY, NEXT)
         return rec

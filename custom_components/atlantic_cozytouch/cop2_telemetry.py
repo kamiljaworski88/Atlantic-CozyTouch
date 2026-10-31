@@ -18,6 +18,7 @@ MAX_HYDRAULIC_CHANGE_AGE_S = 12 * 3600
 # A partial-day Q divided by a full-day E is biased/period-mismatched.
 MIN_DAY_COVERAGE = 0.80
 NEAR_COMPLETE_DAY_COVERAGE = 0.95
+THERMAL_ENERGY_MINIMUM_COVERAGE = 0.94
 WATER_KW_FACTOR = 4.186 / 60.0  # approximation for water, NOT glycol
 MAX_HEAT_KW = 25.0
 MAX_COP2 = 12.0
@@ -285,12 +286,12 @@ class Cop2Telemetry:
         )
         totals = calc["thermal_kwh"]
         strict_thermal_ready = (
-            calc["covered_s"] >= 86400 * NEAR_COMPLETE_DAY_COVERAGE
+            calc["covered_s"] >= 86400 * THERMAL_ENERGY_MINIMUM_COVERAGE
             and calc["segments"] > 0
             and calc["topology_verified_pct"] == 100.0
         )
-        if calc["covered_s"] < 86400 * NEAR_COMPLETE_DAY_COVERAGE:
-            thermal_status = "niewystarczajace_pokrycie_95"
+        if calc["covered_s"] < 86400 * THERMAL_ENERGY_MINIMUM_COVERAGE:
+            thermal_status = "niewystarczajace_pokrycie_94"
         elif calc["topology_verified_pct"] < 100.0:
             thermal_status = "niepotwierdzone_powiazanie_modulow"
         elif totals["CO"] < 0 or totals["CWU"] < 0:
@@ -361,7 +362,7 @@ class Cop2Telemetry:
             "thermal_energy_status": thermal_status,
             "thermal_energy_ready": strict_thermal_ready,
             "thermal_energy_minimum_coverage_pct": round(
-                100 * NEAR_COMPLETE_DAY_COVERAGE
+                100 * THERMAL_ENERGY_MINIMUM_COVERAGE
             ),
             "estimated_thermal_co_kwh": totals["CO"] if ready else None,
             "estimated_thermal_cwu_kwh": totals["CWU"] if ready else None,

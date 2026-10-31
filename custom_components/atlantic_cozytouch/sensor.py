@@ -958,7 +958,7 @@ class AtlanticThermalEnergyQualitySensor(CoordinatorEntity, SensorEntity):
             "data_utc": result.get("day_utc"),
             "pokrycie_procent": result.get("coverage_pct"),
             "wymagane_pokrycie_procent": result.get(
-                "thermal_energy_minimum_coverage_pct", 95
+                "thermal_energy_minimum_coverage_pct", 94
             ),
             "potwierdzenie_topologii_procent": result.get(
                 "topology_verified_pct"
@@ -976,7 +976,7 @@ class AtlanticThermalEnergyQualitySensor(CoordinatorEntity, SensorEntity):
 
 
 class AtlanticEstimatedThermalEnergySensor(CoordinatorEntity, SensorEntity):
-    """Completed-day hydraulic heat, gated at 95% and verified topology."""
+    """Completed-day hydraulic heat, gated at 94% and verified topology."""
 
     _attr_has_entity_name = True
     _attr_icon = "mdi:heat-wave"
