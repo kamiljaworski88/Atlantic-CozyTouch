@@ -62,6 +62,14 @@ class ProductDiscoverySession(DiscoverySession):
         self.product_status = product_status
 
     def get(self, url, **kwargs):
+        if "/magellan/productmodels/products/" in url:
+            self.calls.append(("GET", url, kwargs))
+            product_id = int(url.rsplit("/", 1)[-1])
+            payload = {"id": product_id, "familyId": 7,
+                       "name": "PRIVATE_VENDOR_LABEL", "serialNumber": "SECRET_SERIAL"}
+            reply = Reply(self.product_status, payload)
+            reply.content = Content(payload)
+            return reply
         if "/magellan/productmodels/capabilities?productid=" not in url:
             return super().get(url, **kwargs)
         self.calls.append(("GET", url, kwargs))
@@ -101,11 +109,11 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
             [(d["product_id"], d["model_id"]) for d in devices], [(2, 35), (3, 76)]
         )
         pristine = json.dumps(devices, sort_keys=True)
-        for i in range(8):
+        for i in range(10):
             previous = len(session.calls)
             await client.async_probe_energy_discovery(devices)
             self.assertEqual(len(session.calls), previous + 1)
-        self.assertEqual(len(session.calls), 10)  # Login + setup + 8 GETs
+        self.assertEqual(len(session.calls), 12)  # Login + setup + 10 GETs
         self.assertEqual(json.dumps(devices, sort_keys=True), pristine)
         results = client.discovery_summary["results"]
         self.assertIn("product_capabilities_interfejs", results)
@@ -123,11 +131,14 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(interface["nieznane_kandydaty"],
                          [{"capability_id": 900, "kategoria": "możliwy_defrost"}])
         self.assertEqual(results["product_capabilities_generator"]["product_id"], 3)
+        self.assertEqual(results["product_metadata_interfejs"]["family_id"], 7)
+        self.assertTrue(results["product_metadata_generator"]["family_id_potwierdzony"])
         self.assertFalse(interface["bezposredni_defrost_potwierdzony"])
         self.assertFalse(interface["wyprodukowana_energia_cieplna_potwierdzona"])
         report = json.dumps(client.discovery_summary)
         for secret in ("PRIVATE_SHOULD_NOT_BE_STORED", "PRIVATE_DESCRIPTION",
-                       "SECRET_SERIAL", "fake@example.invalid", "Bearer"):
+                       "PRIVATE_VENDOR_LABEL", "SECRET_SERIAL",
+                       "fake@example.invalid", "Bearer"):
             self.assertNotIn(secret, report)
         product_calls = [
             url for method, url, _ in session.calls
@@ -136,6 +147,13 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(product_calls, [
             d.CATALOGUE_URL + "?productid=2",
             d.CATALOGUE_URL + "?productid=3",
+        ])
+        metadata_calls = [
+            url for method, url, _ in session.calls
+            if "/magellan/productmodels/products/" in url
+        ]
+        self.assertEqual(metadata_calls, [
+            d.product_metadata_url(2), d.product_metadata_url(3)
         ])
         self.assertTrue(all(method in ("GET", "POST") for method, _, _ in session.calls))
         self.assertEqual(client._discovery_urls, frozenset())
@@ -410,6 +428,24 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
 
 
 class DiscoveryParsing(unittest.TestCase):
+    def test_product_family_metadata_is_strict_and_redacted(self):
+        payload = {"id": 2, "familyId": 7, "name": "SECRET_MODEL",
+                   "serialNumber": "SECRET_SERIAL"}
+        result = d.product_metadata_summary(payload, 2)
+        self.assertEqual(result["family_id"], 7)
+        self.assertTrue(result["family_id_potwierdzony"])
+        self.assertNotIn("SECRET", json.dumps(result))
+        self.assertFalse(d.product_metadata_summary({"id": 2}, 2)["family_id_potwierdzony"])
+        for bad in ({"id": 3, "familyId": 7}, [], {"id": 2, "familyId": True}):
+            if isinstance(bad, list):
+                with self.assertRaises(ValueError):
+                    d.product_metadata_summary(bad, 2)
+            elif bad.get("id") == 3:
+                with self.assertRaises(ValueError):
+                    d.product_metadata_summary(bad, 2)
+            else:
+                self.assertFalse(d.product_metadata_summary(bad, 2)["family_id_potwierdzony"])
+
     def test_product_catalogue_matrix_is_bounded_and_not_direct_telemetry(self):
         payload = [
             {"id": 24, "name": "StartCounterCompressor", "isSensitiveData": False},
