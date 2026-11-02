@@ -2,7 +2,15 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.32 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.33 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+
+## v0.5.33 — porównanie katalogu produktu z rzeczywistym odczytem API
+
+- Dodano walidowane `productId` i `modelId` z bieżącego odczytu urządzeń oraz metadane `familyId` z katalogu produktu.
+- Opcjonalne badanie `experimental_api_discovery` wykonuje maksymalnie 4 dodatkowe **GET** (łącznie maks. 11 na cykl, jeden na odświeżenie): katalog możliwości i metadane maksymalnie dwóch różnych produktów.
+- Nowa encja diagnostyczna **Atlantic · audyt możliwości produktu** porównuje parametry zadeklarowane dla produktu z parametrami raportowanymi przez pompę — osobno dla sprężarki, energii, grzałek, hydrauliki, CWU i błędów.
+- Nie udostępnia surowych identyfikatorów urządzeń, tokenów ani wartości nieznanych parametrów. Nie zmienia COP, defrostu ani działania pompy.
+- [Instrukcja, zabezpieczenia i testy](docs/PRODUCT_CAPABILITY_AUDIT_V0533.md).
 
 ## v0.5.32 — audyt metadanych sprężarki w katalogu API
 
@@ -49,8 +57,9 @@ bez zmian; nowe testy charakterystyki dokumentują nierozwiązane ograniczenia.
 
 [Instrukcja i ustalenia reverse engineeringu](docs/API_DISCOVERY_20261026.md):
 bezpośrednio pobrane specyfikacje producenta ujawniły parametry dat historii,
-filtr urządzenia oraz filtrowany GET capability. Nowa opcja jest domyślnie
-wyłączona, wykonuje do sześciu odczytów i pokazuje wyniki w osobnej encji.
+filtr urządzenia oraz filtrowany GET capability. Opcja jest domyślnie
+wyłączona; od v0.5.33 wykonuje do jedenastu odczytów GET na cykl badawczy
+(jeden na odświeżenie) i pokazuje wyniki w encjach diagnostycznych.
 Nie odblokowuje COP ani sterowania pompą.
 
 ## Bezpieczeństwo
