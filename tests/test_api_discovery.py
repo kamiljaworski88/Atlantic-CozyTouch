@@ -49,7 +49,187 @@ class DiscoverySession(Session):
         return reply
 
 
+class ProductDiscoverySession(DiscoverySession):
+    """Product metadata from a fake authorised setup, never live Atlantic."""
+
+    def __init__(self, *, product_ids=(2, 3), product_status=200):
+        super().__init__()
+        for item, product_id, model_id in zip(
+            self.setup_payload[0]["devices"], product_ids, (35, 76)
+        ):
+            item["productId"] = product_id
+            item["modelId"] = model_id
+        self.product_status = product_status
+
+    def get(self, url, **kwargs):
+        if "/magellan/productmodels/products/" in url:
+            self.calls.append(("GET", url, kwargs))
+            product_id = int(url.rsplit("/", 1)[-1])
+            payload = {"id": product_id, "familyId": 7,
+                       "name": "PRIVATE_VENDOR_LABEL", "serialNumber": "SECRET_SERIAL"}
+            reply = Reply(self.product_status, payload)
+            reply.content = Content(payload)
+            return reply
+        if "/magellan/productmodels/capabilities?productid=" not in url:
+            return super().get(url, **kwargs)
+        self.calls.append(("GET", url, kwargs))
+        if "productid=2" in url:
+            payload = [
+                {"id": 24, "name": "StartCounterCompressor", "isSensitiveData": False,
+                 "value": "PRIVATE_SHOULD_NOT_BE_STORED"},
+                {"id": 27, "name": "HoursRunCompressor", "isSensitiveData": False},
+                {"id": 57, "name": "HOME_ElecHeatConsumptionCumulated", "isSensitiveData": False},
+                {"id": 59, "name": "HOME_ElecDHWConsumptionCumulated", "isSensitiveData": False},
+                {"id": 91, "name": "GENERATORStatus", "isSensitiveData": False},
+                {"id": 112, "name": "CirculatorFlowRate", "isSensitiveData": False},
+                {"id": 164, "name": "HOME_EnergyConsumptionCapabilities", "isSensitiveData": False},
+                {"id": 900, "name": "DefrostActive", "description": "PRIVATE_DESCRIPTION",
+                 "isSensitiveData": False},
+                {"id": 901, "name": "SecretDefrost", "isSensitiveData": True},
+            ]
+        else:
+            payload = [
+                {"id": 51, "name": "CompressorState", "isSensitiveData": False},
+                {"id": 72, "name": "CompressorModulation", "isSensitiveData": False},
+                {"id": 109, "name": "GENERATOR_WaterOut1", "isSensitiveData": False},
+                {"id": 116, "name": "GENERATOR_WaterReturn", "isSensitiveData": False},
+                {"id": 902, "name": "ThermalHeatProduced", "isSensitiveData": False},
+            ]
+        reply = Reply(self.product_status, payload)
+        reply.content = Content(payload)
+        return reply
+
+
 class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
+    async def test_owned_products_are_compared_without_exporting_values(self):
+        session = ProductDiscoverySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        self.assertEqual(
+            [(d["product_id"], d["model_id"]) for d in devices], [(2, 35), (3, 76)]
+        )
+        pristine = json.dumps(devices, sort_keys=True)
+        for i in range(10):
+            previous = len(session.calls)
+            await client.async_probe_energy_discovery(devices)
+            self.assertEqual(len(session.calls), previous + 1)
+        self.assertEqual(len(session.calls), 12)  # Login + setup + 10 GETs
+        self.assertEqual(json.dumps(devices, sort_keys=True), pristine)
+        results = client.discovery_summary["results"]
+        self.assertIn("product_capabilities_interfejs", results)
+        self.assertIn("product_capabilities_generator", results)
+        interface = results["product_capabilities_interfejs"]
+        self.assertEqual(interface["product_id"], 2)
+        self.assertEqual(interface["model_id"], 35)
+        self.assertEqual(interface["porownanie"]["sprezarka"]["w_katalogu"], [24, 27])
+        self.assertEqual(interface["porownanie"]["sprezarka"]["zgloszone_przez_urzadzenie"], [])
+        self.assertEqual(
+            interface["porownanie"]["sprezarka"]["w_katalogu_ale_brak_w_odczycie"], [24, 27]
+        )
+        self.assertEqual(interface["porownanie"]["energia_elektryczna"]["w_katalogu"],
+                         [57, 59])
+        self.assertEqual(interface["nieznane_kandydaty"],
+                         [{"capability_id": 900, "kategoria": "możliwy_defrost"}])
+        self.assertEqual(results["product_capabilities_generator"]["product_id"], 3)
+        self.assertEqual(results["product_metadata_interfejs"]["family_id"], 7)
+        self.assertTrue(results["product_metadata_generator"]["family_id_potwierdzony"])
+        self.assertFalse(interface["bezposredni_defrost_potwierdzony"])
+        self.assertFalse(interface["wyprodukowana_energia_cieplna_potwierdzona"])
+        report = json.dumps(client.discovery_summary)
+        for secret in ("PRIVATE_SHOULD_NOT_BE_STORED", "PRIVATE_DESCRIPTION",
+                       "PRIVATE_VENDOR_LABEL", "SECRET_SERIAL",
+                       "fake@example.invalid", "Bearer"):
+            self.assertNotIn(secret, report)
+        product_calls = [
+            url for method, url, _ in session.calls
+            if "/magellan/productmodels/capabilities?productid=" in url
+        ]
+        self.assertEqual(product_calls, [
+            d.CATALOGUE_URL + "?productid=2",
+            d.CATALOGUE_URL + "?productid=3",
+        ])
+        metadata_calls = [
+            url for method, url, _ in session.calls
+            if "/magellan/productmodels/products/" in url
+        ]
+        self.assertEqual(metadata_calls, [
+            d.product_metadata_url(2), d.product_metadata_url(3)
+        ])
+        self.assertTrue(all(method in ("GET", "POST") for method, _, _ in session.calls))
+        self.assertEqual(client._discovery_urls, frozenset())
+        previous = len(session.calls)
+        await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(session.calls), previous)
+
+    async def test_duplicate_product_get_is_deduplicated(self):
+        session = ProductDiscoverySession(product_ids=(2, 2))
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(9):
+            await client.async_probe_energy_discovery(devices)
+        self.assertEqual(
+            sum("/magellan/productmodels/capabilities?productid=" in u
+                for _, u, _ in session.calls), 1,
+        )
+
+    async def test_missing_or_invalid_product_id_adds_no_get(self):
+        for ids in ((None, None), ("bad", False), (0, "2147483648")):
+            with self.subTest(ids=ids):
+                session = ProductDiscoverySession(product_ids=ids)
+                client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+                devices = await client.async_read()
+                for _ in range(9):
+                    await client.async_probe_energy_discovery(devices)
+                self.assertEqual(
+                    sum("/magellan/productmodels/capabilities?productid=" in u
+                        for _, u, _ in session.calls), 0,
+                )
+                self.assertEqual(
+                    client.discovery_summary["product_audit_status"],
+                    "brak_product_id_w_odczycie_urzadzenia",
+                )
+
+    async def test_changed_product_aborts_pending_request(self):
+        session = ProductDiscoverySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(6):
+            await client.async_probe_energy_discovery(devices)
+        # Next request is product=2. A changed authenticated product invalidates it.
+        devices[0]["product_id"] = 99
+        previous = len(session.calls)
+        await client.async_probe_energy_discovery(devices)
+        self.assertEqual(len(session.calls), previous)
+        self.assertEqual(client.discovery_summary["state"], "zmiana_zrodla_przerwano")
+
+    async def test_product_gets_are_denied_outside_owned_opt_in_probe(self):
+        session = ProductDiscoverySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        await client.async_read()
+        for url in (
+            d.product_catalogue_url(2),
+            d.product_metadata_url(2),
+            d.product_catalogue_url(999),
+            d.product_metadata_url(999),
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(AtlanticError):
+                    client._request("GET", url)
+                with self.assertRaises(AtlanticError):
+                    client._request("POST", url)
+        self.assertEqual(len(session.calls), 2)
+
+    async def test_product_http_403_is_reported_not_interpreted_as_capability_absence(self):
+        session = ProductDiscoverySession(product_status=403)
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        devices = await client.async_read()
+        for _ in range(8):
+            await client.async_probe_energy_discovery(devices)
+        result = client.discovery_summary["results"]["product_capabilities_interfejs"]
+        self.assertEqual(result["state"], "blad_http")
+        self.assertEqual(result["http_status"], 403)
+        self.assertNotIn("porownanie", result)
+
     async def test_six_gets_spread_across_polls_and_no_cop_or_device_mutation(self):
         session = DiscoverySession()
         client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
@@ -265,6 +445,59 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
 
 
 class DiscoveryParsing(unittest.TestCase):
+    def test_product_family_metadata_is_strict_and_redacted(self):
+        payload = {"id": 2, "familyId": 7, "name": "SECRET_MODEL",
+                   "serialNumber": "SECRET_SERIAL"}
+        result = d.product_metadata_summary(payload, 2)
+        self.assertEqual(result["family_id"], 7)
+        self.assertTrue(result["family_id_potwierdzony"])
+        self.assertNotIn("SECRET", json.dumps(result))
+        self.assertFalse(d.product_metadata_summary({"id": 2}, 2)["family_id_potwierdzony"])
+        for bad in ({"id": 3, "familyId": 7}, [], {"id": 2, "familyId": True}):
+            if isinstance(bad, list):
+                with self.assertRaises(ValueError):
+                    d.product_metadata_summary(bad, 2)
+            elif bad.get("id") == 3:
+                with self.assertRaises(ValueError):
+                    d.product_metadata_summary(bad, 2)
+            else:
+                self.assertFalse(d.product_metadata_summary(bad, 2)["family_id_potwierdzony"])
+
+    def test_product_catalogue_matrix_is_bounded_and_not_direct_telemetry(self):
+        payload = [
+            {"id": 24, "name": "StartCounterCompressor", "isSensitiveData": False},
+            {"id": 27, "name": "HoursRunCompressor", "isSensitiveData": False},
+            {"id": 50, "name": "GENERATOR_ModulationLevel", "isSensitiveData": False},
+            {"id": 51, "name": "CompressorState", "isSensitiveData": False},
+            {"id": 72, "name": "CompressorModulation", "isSensitiveData": False},
+            {"id": 93, "name": "THAMB_ThermalEnergySupplyPresent", "isSensitiveData": False},
+            {"id": 164, "name": "HOME_EnergyConsumptionCapabilities", "isSensitiveData": False},
+            {"id": 1234, "name": "HeatingDefrostCycle", "isSensitiveData": False,
+             "description": "SECRET_ACCOUNT_DESCRIPTION"},
+            {"id": 1235, "name": "ThermalHeatProduced", "isSensitiveData": False},
+            {"id": 1236, "name": "PrivateDefrost", "isSensitiveData": True},
+            {"id": 1237, "name": "SensitiveOther", "isSensitiveData": False,
+             "value": "SECRET_VALUE"},
+        ]
+        result = d.product_capability_summary(payload, 2, 35, "generator", [24, 51, 57])
+        self.assertEqual(result["porownanie"]["sprezarka"]["w_katalogu"], [24, 27, 50, 51, 72])
+        self.assertEqual(result["porownanie"]["sprezarka"]["zgloszone_przez_urzadzenie"], [24, 51])
+        self.assertEqual(result["porownanie"]["sprezarka"]["w_katalogu_ale_brak_w_odczycie"], [27, 50, 72])
+        self.assertEqual(result["porownanie"]["energia_elektryczna"]["zgloszone_przez_urzadzenie"], [57])
+        self.assertEqual(result["odczyty_bez_deklaracji_w_katalogu"], [57])
+        self.assertEqual(result["nieznane_kandydaty"], [
+            {"capability_id": 1234, "kategoria": "możliwy_defrost"},
+            {"capability_id": 1235, "kategoria": "możliwa_energia_cieplna"},
+        ])
+        self.assertFalse(result["bezposredni_defrost_potwierdzony"])
+        self.assertFalse(result["wyprodukowana_energia_cieplna_potwierdzona"])
+        self.assertNotIn("SECRET_", json.dumps(result))
+        with self.assertRaises(ValueError):
+            d.product_capability_summary(payload * 300, 2, None, "interfejs", [])
+        for bad in (True, None, 0, -1, "2", 2_147_483_648):
+            with self.assertRaises(ValueError):
+                d.product_catalogue_url(bad)
+
     def test_gateway_id_is_from_single_authenticated_gateway_only(self):
         self.assertEqual(d.unique_gateway_id([{"gateways": [{"id": 345}]}]), "345")
         self.assertEqual(d.unique_gateway_id([{"gateways": [{"id": "345"}]}]), "345")

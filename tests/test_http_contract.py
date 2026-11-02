@@ -508,6 +508,14 @@ class TestMonthlyEndpoint(unittest.IsolatedAsyncioTestCase):
 class DeviceEnergySession(Session):
     """Network-free test of vendor device-specific daily/monthly consumption."""
     def __init__(self, device_status=200, daily_status=None, monthly_status=None):
+        from datetime import datetime, timezone
+        # Current-month fixture makes the production-candidate assertion stable
+        # across calendar changes without altering actual API/probe behaviour.
+        self.fixture_timestamp = int(
+            datetime.now(timezone.utc).replace(
+                day=1, hour=0, minute=0, second=0, microsecond=0
+            ).timestamp()
+        )
         super().__init__(setup_payload=[{"id": 123, "devices": [{
             "deviceId": 9, "name": "Simulated pump", "capabilities": [
                 {"capabilityId": 91, "value": "1"},
@@ -529,7 +537,7 @@ class DeviceEnergySession(Session):
                 "deviceId": "SECRET_IDENTIFIER",
                 "type": 1, "unit": 1, "category": 7,
                 "consumptionPeriods": [{
-                    "date": 1788825600,
+                    "date": self.fixture_timestamp,
                     "consumedQuantity": 123456.789,
                     "producedQuantity": 456789.123,
                 }],
@@ -562,7 +570,7 @@ class TestDeviceEnergyProbe(unittest.IsolatedAsyncioTestCase):
         )
         self.assertEqual(client.device_energy_summary["monthly"]["state"], "dostepna")
         result = str(client.device_energy_summary)
-        for private in ("SECRET", "123456", "456789", "/9/", "1788825600"):
+        for private in ("SECRET", "123456", "456789", "/9/", str(session.fixture_timestamp)):
             self.assertNotIn(private, result)
         self.assertEqual(
             [(m, u) for m, u, _ in session.calls][-2:],

@@ -690,7 +690,7 @@ class AtlanticReadOnlyClient:
 
 
     async def async_probe_energy_discovery(self, devices: list[dict]) -> None:
-        """Opt-in, one extra GET per poll, at most six per client/setup lifetime.
+        """Opt-in, one extra GET per poll, up to eleven per client/setup lifetime.
 
         Only observed account devices; no arbitrary routes, refresh commands,
         automatic retries, raw payload storage or energy/COP publication.
@@ -720,9 +720,28 @@ class AtlanticReadOnlyClient:
             return
         probe = self._discovery_queue.pop(0)
         own_ids = {identifier for _, identifier in selected}
+        # A product query is bound to the previously authenticated, uniquely
+        # selected pump component and its catalogue ID. On any change stop.
+        product_matches = (
+            probe.product_id is None or any(
+                d.get("id") == probe.target_id
+                and d.get("product_id") == probe.product_id
+                for d in devices
+            )
+        )
+        if probe.product_id is not None:
+            if probe.key in ("product_capabilities_interfejs", "product_capabilities_generator"):
+                expected_url = discovery_api.product_catalogue_url(probe.product_id)
+            elif probe.key in ("product_metadata_interfejs", "product_metadata_generator"):
+                expected_url = discovery_api.product_metadata_url(probe.product_id)
+            else:
+                expected_url = None
+            if probe.url != expected_url:
+                product_matches = False
         if ((probe.target_id is not None and probe.target_id not in own_ids)
                 or (probe.setup_id is not None and probe.setup_id != self._setup_id)
-                or (probe.gateway_id is not None and probe.gateway_id != self._gateway_id)):
+                or (probe.gateway_id is not None and probe.gateway_id != self._gateway_id)
+                or not product_matches):
             self._discovery_queue.clear()
             self.discovery_summary["state"] = "zmiana_zrodla_przerwano"
             self.discovery_summary["remaining_requests"] = 0
@@ -767,6 +786,21 @@ class AtlanticReadOnlyClient:
                     payload = json.loads(raw)
                     if probe.key == "catalogue":
                         result, extra_ids = discovery_api.catalogue_summary(payload)
+                    elif probe.key.startswith("product_metadata_"):
+                        result = discovery_api.product_metadata_summary(
+                            payload, probe.product_id)
+                    elif probe.key.startswith("product_capabilities_"):
+                        selected_device = next(
+                            (d for d in devices if d.get("id") == probe.target_id),
+                            None,
+                        )
+                        if selected_device is None:
+                            raise ValueError("Changed product target")
+                        result = discovery_api.product_capability_summary(
+                            payload, probe.product_id, selected_device.get("model_id"),
+                            probe.key.removeprefix("product_capabilities_"),
+                            selected_device.get("reported_capability_ids", []),
+                        )
                     elif probe.key.startswith("capabilities_"):
                         reported = next((set(d.get("reported_capability_ids", []))
                                          for d in devices if d["id"] == probe.target_id), set())
@@ -783,6 +817,9 @@ class AtlanticReadOnlyClient:
             self._discovery_urls = frozenset()
         result["api_observed_at"] = datetime.now(timezone.utc).isoformat()
         self.discovery_summary["results"][probe.key] = result
+        if probe.key.startswith(("product_capabilities_", "product_metadata_")):
+            self.discovery_summary["product_audit_status"] = result.get(
+                "state", "nie_sprawdzono")
         if stop:
             self._discovery_queue.clear()
             self.discovery_summary["state"] = "przerwano_401_lub_429"
@@ -793,6 +830,11 @@ class AtlanticReadOnlyClient:
             self._discovery_queue = discovery_api.build_plan(
                 devices, self._setup_id, extra_ids, datetime.now(timezone.utc),
                 gateway_id=self._gateway_id)
+            self.discovery_summary["product_audit_status"] = (
+                "oczekiwanie_na_katalog_produktu"
+                if any(p.product_id is not None for p in self._discovery_queue)
+                else "brak_product_id_w_odczycie_urzadzenia"
+            )
         self.discovery_summary["remaining_requests"] = len(self._discovery_queue)
         self.discovery_summary["state"] = (
             "w_trakcie" if self._discovery_queue else "zakonczono_sprawdz_wyniki")

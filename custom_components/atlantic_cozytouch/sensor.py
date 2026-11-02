@@ -72,6 +72,7 @@ async def async_setup_entry(hass, entry, async_add_entities):
     # Preserve the existing diagnostic unique_id across upgrades.
     async_add_entities([
         AtlanticApiDiscoverySensor(coordinator, entry.entry_id),
+        AtlanticProductCapabilityAuditSensor(coordinator, entry.entry_id),
         AtlanticCop2DiagnosticSensor(coordinator, entry.entry_id),
         AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_co"),
         AtlanticCop2EstimateSensor(coordinator, entry.entry_id, "cop2_cwu"),
@@ -962,6 +963,61 @@ class AtlanticApiDiscoverySensor(CoordinatorEntity, SensorEntity):
     @property
     def extra_state_attributes(self):
         return getattr(self.coordinator, "atlantic_api_discovery", {})
+
+
+class AtlanticProductCapabilityAuditSensor(CoordinatorEntity, SensorEntity):
+    """Catalogue-vs-live compatibility, not direct compressor/defrost telemetry."""
+
+    _attr_has_entity_name = True
+    _attr_name = "Atlantic · audyt możliwości produktu"
+    _attr_entity_category = EntityCategory.DIAGNOSTIC
+    _attr_icon = "mdi:clipboard-list-outline"
+
+    def __init__(self, coordinator, entry_id: str) -> None:
+        super().__init__(coordinator)
+        self._attr_unique_id = f"{DOMAIN}_{entry_id}_product_capabilities_audit"
+
+    @property
+    def native_value(self):
+        data = getattr(self.coordinator, "atlantic_api_discovery", {})
+        if data.get("state") == "wylaczone":
+            return "wylaczone"
+        results = {
+            key: value for key, value in data.get("results", {}).items()
+            if key.startswith(("product_capabilities_", "product_metadata_"))
+        }
+        if results:
+            if any(
+                v.get("state") not in (
+                    "katalog_produktu_odczytany", "metadane_produktu_odczytane",
+                )
+                for v in results.values()
+            ):
+                return "niekompletny_audyt_produktu"
+            return (
+                "zakonczono" if data.get("state") == "zakonczono_sprawdz_wyniki"
+                else "w_trakcie"
+            )
+        return data.get("product_audit_status", "oczekiwanie_na_badanie_api")
+
+    @property
+    def extra_state_attributes(self):
+        data = getattr(self.coordinator, "atlantic_api_discovery", {})
+        results = {
+            key: value for key, value in data.get("results", {}).items()
+            if key.startswith(("product_capabilities_", "product_metadata_"))
+        }
+        return {
+            "wyniki_produktow": results,
+            "status_badania_api": data.get("state", "nie_sprawdzono"),
+            "metadane_a_nie_pomiar": True,
+            "energia_cieplna_potwierdzona": False,
+            "defrost_potwierdzony": False,
+            "uwaga": (
+                "Parametr w katalogu produktu nie oznacza, ze pompa go raportuje. "
+                "Brak odczytu nie dowodzi braku lokalnych danych sterownika."
+            ),
+        }
 
 
 class AtlanticCop2DiagnosticSensor(CoordinatorEntity, SensorEntity):

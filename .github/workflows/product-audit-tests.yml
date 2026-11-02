@@ -1,0 +1,28 @@
+name: Atlantic read-only product audit tests
+
+on:
+  pull_request:
+    paths:
+      - 'custom_components/atlantic_cozytouch/**'
+      - 'tests/test_api_discovery.py'
+      - 'tests/test_readings.py'
+      - '.github/workflows/product-audit-tests.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  offline-contracts:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+      - name: Compile integration
+        run: python -m compileall -q custom_components/atlantic_cozytouch
+      - name: Unit-test productId extraction and API discovery
+        run: |
+          python -m unittest discover -s tests -p 'test_readings.py' -v
+          python -m unittest discover -s tests -p 'test_api_discovery.py' -v
