@@ -455,7 +455,35 @@ class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
 
     @property
     def extra_state_attributes(self):
-        return dict(getattr(self.coordinator, "atlantic_compressor_probe", {}))
+        """Show which compressor capabilities the normal cloud poll reported.
+
+        Never expose raw device identifiers, tokens, or inferred on/off states.
+        The optional direct probe is reported separately from normal telemetry.
+        """
+        result = dict(getattr(self.coordinator, "atlantic_compressor_probe", {}))
+        devices = compressor_host_devices(self.coordinator.data or [])
+        ids = (24, 27, 51, 72)
+        observed = {cap: False for cap in ids}
+        for device in devices:
+            reported = set(device.get("reported_capability_ids", []))
+            for cap in ids:
+                observed[cap] |= cap in reported
+        result["liczba_urzadzen_sprezarki"] = len(devices)
+        result["dostepnosc_parametrow"] = {
+            str(cap): {
+                "nazwa": CAPABILITIES[cap].label,
+                "zgloszony_w_standardowym_odczycie": observed[cap],
+            }
+            for cap in ids
+        }
+        result["brakujace_id_w_standardowym_odczycie"] = [
+            cap for cap in ids if not observed[cap]
+        ]
+        result["uwaga"] = (
+            "Brak parametru w standardowym odczycie nie dowodzi, "
+            "ze nie istnieje w innych zasobach API."
+        )
+        return result
 
 
 class AtlanticMonthlyEnergyProbeSensor(CoordinatorEntity, SensorEntity):
