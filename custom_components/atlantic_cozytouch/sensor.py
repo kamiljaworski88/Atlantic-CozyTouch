@@ -469,6 +469,26 @@ class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
             for cap in ids:
                 observed[cap] |= cap in reported
         result["liczba_urzadzen_sprezarki"] = len(devices)
+        # The global catalogue is metadata, not a device reading. Expose only
+        # the previously collected opt-in discovery result, without new GETs.
+        discovery = getattr(self.coordinator, "atlantic_api_discovery", {})
+        catalogue = discovery.get("results", {}).get("catalogue", {})
+        candidates = catalogue.get("katalog_sprezarki", {})
+        result["katalog_api_sprezarki"] = {
+            "status": (
+                "wylaczone" if discovery.get("state") == "wylaczone"
+                else catalogue.get("state", "oczekiwanie_na_katalog")
+            ),
+            "pozycje": candidates.get("rows", []),
+            "tylko_metadane": True,
+            "potwierdzenie_na_urzadzeniu": False,
+        }
+        # ID50 is GENERATOR modulation. Even if present, it is NOT proof of
+        # compressor running, starts or compressor modulation (ID72).
+        result["generator_modulacja_id_50_obecna"] = any(
+            50 in set(device.get("reported_capability_ids", []))
+            for device in devices
+        )
         result["dostepnosc_parametrow"] = {
             str(cap): {
                 "nazwa": CAPABILITIES[cap].title,
