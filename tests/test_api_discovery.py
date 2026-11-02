@@ -202,6 +202,23 @@ class DiscoveryContract(unittest.IsolatedAsyncioTestCase):
         self.assertEqual(len(session.calls), previous)
         self.assertEqual(client.discovery_summary["state"], "zmiana_zrodla_przerwano")
 
+    async def test_product_gets_are_denied_outside_owned_opt_in_probe(self):
+        session = ProductDiscoverySession()
+        client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
+        await client.async_read()
+        for url in (
+            d.product_catalogue_url(2),
+            d.product_metadata_url(2),
+            d.product_catalogue_url(999),
+            d.product_metadata_url(999),
+        ):
+            with self.subTest(url=url):
+                with self.assertRaises(AtlanticError):
+                    client._request("GET", url)
+                with self.assertRaises(AtlanticError):
+                    client._request("POST", url)
+        self.assertEqual(len(session.calls), 2)
+
     async def test_product_http_403_is_reported_not_interpreted_as_capability_absence(self):
         session = ProductDiscoverySession(product_status=403)
         client = AtlanticReadOnlyClient(session, "fake@example.invalid", "fake")
