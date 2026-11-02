@@ -24,6 +24,24 @@ MAX_DEVICES_PER_ACCOUNT = 128
 MAX_CAPABILITIES_PER_DEVICE = 1024
 MAX_CAPABILITY_ID = 2_147_483_647  # Vendor also uses six-digit identifiers.
 
+def catalogue_numeric_id(value: object) -> int | None:
+    """Bounded product/model catalogue ID; never interpret a device serial."""
+    if type(value) is int:
+        number = value
+    elif (
+        isinstance(value, str)
+        and 1 <= len(value) <= 10
+        and value.isascii()
+        and value.isdecimal()
+        and value[0] != "0"
+    ):
+        number = int(value)
+    else:
+        return None
+    return number if 1 <= number <= MAX_CAPABILITY_ID else None
+
+
+
 CAPABILITIES: dict[int, CapabilitySpec] = {
     6: CapabilitySpec("Błąd generatora", kind="text", diagnostic=True),
     # Atlantic catalog describes 8/9/11 as auxiliary heater powers in kW
@@ -217,6 +235,10 @@ def extract_devices(payload: object) -> list[dict]:
             result.append(
                 {
                     "id": safe_id,
+                    # Vendor catalogue identifiers, NOT account/device IDs.
+                    # Invalid/missing IDs are never used as query parameters.
+                    "product_id": catalogue_numeric_id(item.get("productId")),
+                    "model_id": catalogue_numeric_id(item.get("modelId")),
                     # Internal topology evidence only. It is never exported by
                     # diagnostics or persisted in COP2 telemetry.
                     "master_id": safe_master_id,
