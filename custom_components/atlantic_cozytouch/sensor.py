@@ -471,7 +471,7 @@ class AtlanticCompressorProbeSensor(CoordinatorEntity, SensorEntity):
         result["liczba_urzadzen_sprezarki"] = len(devices)
         result["dostepnosc_parametrow"] = {
             str(cap): {
-                "nazwa": CAPABILITIES[cap].label,
+                "nazwa": CAPABILITIES[cap].title,
                 "zgloszony_w_standardowym_odczycie": observed[cap],
             }
             for cap in ids
