@@ -137,6 +137,7 @@ def catalogue_summary(payload):
         raise ValueError("catalogue shape")
     rows, extra = [], set()
     compressor_rows = []
+    compressor_count = 0
     for item in payload:
         if not isinstance(item, dict):
             raise ValueError("catalogue item")
@@ -144,8 +145,10 @@ def catalogue_summary(payload):
         if type(cap) is not int or not 0 <= cap <= 2147483647:
             continue
         candidate = compressor_catalogue_candidate(item)
-        if candidate is not None and len(compressor_rows) < MAX_COMPRESSOR_CATALOGUE_ROWS:
-            compressor_rows.append(candidate)
+        if candidate is not None:
+            compressor_count += 1
+            if len(compressor_rows) < MAX_COMPRESSOR_CATALOGUE_ROWS:
+                compressor_rows.append(candidate)
         # Classify metadata locally; never export free text from the catalogue.
         parts = [item.get(key) for key in ("name", "description")]
         name = " ".join(part.lower() for part in parts
@@ -176,7 +179,7 @@ def catalogue_summary(payload):
             "katalog_sprezarki": {
                 "state": "globalny_katalog_bez_potwierdzenia_telemetrii",
                 "rows": compressor_rows,
-                "lista_ograniczona": len(compressor_rows) >= MAX_COMPRESSOR_CATALOGUE_ROWS,
+                "lista_ograniczona": compressor_count > MAX_COMPRESSOR_CATALOGUE_ROWS,
             }}, extra
 
 
