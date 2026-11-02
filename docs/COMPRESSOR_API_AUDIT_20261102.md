@@ -25,6 +25,26 @@ nie ma tych danych na lokalnym sterowniku.
 | `/magellan/devices/.../consumptions?periodicity=...` | Historia energii urządzenia | Testowane oddzielnie; nie utożsamiać z telemetrią sprężarki |
 | `/magellan/gateways/.../consumptions?periodicity=daily` | Historia energii bramki, jeśli znana | Eksperymentalne; nie potwierdza pracy sprężarki |
 
+### Inne udokumentowane zasoby (nieodpytane na prywatnym koncie)
+
+W niezależnym [przeglądzie powierzchni API Magellan](https://github.com/gduteil/cozytouch/blob/1cdec93f858d8b206a48c5c25d342f36340f6649/docs/api-surface.md)
+wymieniono także odczyty:
+
+- `GET /magellan/productmodels/capabilities?productid=...` —
+  definicje możliwości przypisanych do produktu. **Nie jest to telemetria**.
+- `GET /magellan/productmodels/products` i
+  `GET /magellan/productmodels/families` — słowniki produktów i rodzin;
+  ewentualnie pomagają ustalić kompatybilność, nie czas pracy sprężarki.
+- `GET /magellan/devices/{id}/details` — opis urządzenia, nie liczniki.
+- `GET /magellan/capabilities/{capaId}/devices/{deviceId}` —
+  w niezależnej analizie raportowany HTTP 403 dla konta użytkownika;
+  nie należy zakładać dostępu ani obchodzić uprawnień.
+
+Nie dodajemy żadnych tych tras do integracji bez osobnego,
+ograniczonego planu testu i dowodu, że ich treść jest potrzebna.
+Nie badamy operacji modyfikujących urządzenia.
+Dane deklarowane na poziomie produktu nie gwarantują odczytu na pompie.
+
 ## Co zmienia ten PR
 
 Wykorzystuje **już istniejący, opcjonalny odczyt globalnego katalogu**;
