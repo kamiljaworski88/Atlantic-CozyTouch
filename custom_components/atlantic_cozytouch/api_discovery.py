@@ -31,6 +31,36 @@ def product_catalogue_url(product_id: int) -> str:
     return CATALOGUE_URL + "?" + urlencode({"productid": product_id})
 
 
+def product_metadata_url(product_id: int) -> str:
+    """Single read-only vendor lookup for the exact account-owned product."""
+    product_catalogue_url(product_id)
+    return API_ORIGIN + "/magellan/productmodels/products/" + str(product_id)
+
+
+def product_metadata_summary(payload: object, expected_product_id: int) -> dict:
+    """Extract only catalogue familyId; never export labels or arbitrary fields."""
+    product_metadata_url(expected_product_id)
+    if not isinstance(payload, dict):
+        raise ValueError("Invalid product metadata shape")
+    raw_product_id = payload.get("id", payload.get("productId"))
+    if raw_product_id is not None and (
+        type(raw_product_id) is not int or raw_product_id != expected_product_id
+    ):
+        raise ValueError("Product metadata mismatch")
+    family_id = payload.get("familyId")
+    valid_family = (
+        type(family_id) is int
+        and 1 <= family_id <= 2_147_483_647
+    )
+    return {
+        "state": "metadane_produktu_odczytane",
+        "product_id": expected_product_id,
+        "family_id": family_id if valid_family else None,
+        "family_id_potwierdzony": valid_family,
+        "katalog_to_nie_telemetria": True,
+    }
+
+
 def product_capability_summary(
     payload: object, product_id: int, model_id: int | None,
     role: str, reported_ids: object,
@@ -328,6 +358,9 @@ def build_plan(devices, setup_id, _extra_ids, _now, gateway_id: str | None = Non
             continue
         queried_products.add(product_id)
         plan.append(Probe("product_capabilities_" + role, url,
+                          target_id=device_id, product_id=product_id))
+        plan.append(Probe("product_metadata_" + role,
+                          product_metadata_url(product_id),
                           target_id=device_id, product_id=product_id))
     return plan
 
