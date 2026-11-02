@@ -2,7 +2,14 @@
 
 Nieoficjalna, niezależna integracja Home Assistant do **monitorowania** urządzeń Atlantic przez **oficjalne API Atlantic**.
 
-> **Wersja 0.5.31 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+> **Wersja 0.5.32 jest eksperymentalna. Przed instalacją wykonaj kopię zapasową Home Assistant. Szacunkowy COP i energia cieplna nie są pomiarem producenta ani statystyką HA Energy.**
+
+## v0.5.32 — audyt metadanych sprężarki w katalogu API
+
+- Rozszerzono diagnostykę odczytu sprężarki o definicje katalogowe ID24/27/51/72 oraz rozróżnienie ID50 (modulacja generatora, nie sprężarki).
+- **Bez dodatkowych żądań API:** wykorzystany został istniejący, opcjonalny odczyt `experimental_api_discovery`. Metadane katalogu nie są traktowane jako odczyt pompy.
+- Nie zmienia ustawień ani odczytów CO/CWU, energii, COP2 lub stanu pracy sprężarki.
+- [Audyt API i instrukcja diagnostyczna](docs/COMPRESSOR_API_AUDIT_20261102.md).
 
 ## v0.5.31 — obserwator defrostu (bez sterowania, bez czujników)
 
