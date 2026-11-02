@@ -984,10 +984,15 @@ class AtlanticProductCapabilityAuditSensor(CoordinatorEntity, SensorEntity):
             return "wylaczone"
         results = {
             key: value for key, value in data.get("results", {}).items()
-            if key.startswith("product_capabilities_")
+            if key.startswith(("product_capabilities_", "product_metadata_"))
         }
         if results:
-            if any(v.get("state") != "katalog_produktu_odczytany" for v in results.values()):
+            if any(
+                v.get("state") not in (
+                    "katalog_produktu_odczytany", "metadane_produktu_odczytane",
+                )
+                for v in results.values()
+            ):
                 return "niekompletny_audyt_produktu"
             return (
                 "zakonczono" if data.get("state") == "zakonczono_sprawdz_wyniki"
@@ -1000,7 +1005,7 @@ class AtlanticProductCapabilityAuditSensor(CoordinatorEntity, SensorEntity):
         data = getattr(self.coordinator, "atlantic_api_discovery", {})
         results = {
             key: value for key, value in data.get("results", {}).items()
-            if key.startswith("product_capabilities_")
+            if key.startswith(("product_capabilities_", "product_metadata_"))
         }
         return {
             "wyniki_produktow": results,
