@@ -9,6 +9,92 @@ from .const import API_ORIGIN
 
 CORE_IDS = frozenset((8, 9, 11, 24, 27, 51, 57, 58, 59, 60, 64, 72, 91, 109, 112, 116, 164))
 CATALOGUE_URL = API_ORIGIN + "/magellan/productmodels/capabilities"
+# Metadata-only audit: presence in product catalogue is not device telemetry.
+# ID 93 / ID 164 are capability indicators, NOT produced thermal energy.
+PRODUCT_FOCUS = {
+    "sprezarka": (24, 27, 50, 51, 72),
+    "energia_elektryczna": (57, 58, 59, 60, 298),
+    "kandydaci_energii_cieplnej": (93, 164),
+    "grzalki": (8, 9, 11, 25, 26, 28, 29, 64),
+    "hydraulika": (52, 53, 56, 66, 91, 100, 109, 110, 112, 116, 119, 147),
+    "cwu": (22, 99, 111, 256, 264, 265, 266, 267, 278),
+    "diagnostyka": (6, 150, 180, 182, 318, 319, 320, 380),
+}
+PRODUCT_FOCUS_IDS = frozenset(cap for group in PRODUCT_FOCUS.values() for cap in group)
+MAX_PRODUCT_CANDIDATES = 12
+
+
+def product_catalogue_url(product_id: int) -> str:
+    """Only positive, bounded vendor catalogue IDs, never a device identifier."""
+    if type(product_id) is not int or not 1 <= product_id <= 2_147_483_647:
+        raise ValueError("Invalid product catalogue ID")
+    return CATALOGUE_URL + "?" + urlencode({"productid": product_id})
+
+
+def product_capability_summary(
+    payload: object, product_id: int, model_id: int | None,
+    role: str, reported_ids: object,
+) -> dict:
+    """Compare published product metadata with one authenticated device.
+
+    No raw capability values or descriptions are ever returned. Candidate
+    categories are hints only; neither defrost nor produced heat is proven.
+    """
+    product_catalogue_url(product_id)
+    if role not in ("interfejs", "generator"):
+        raise ValueError("Invalid physical/logical role")
+    if not isinstance(payload, list) or len(payload) > 2048:
+        raise ValueError("Invalid product catalogue shape")
+    if not isinstance(reported_ids, (list, set, tuple)):
+        raise ValueError("Invalid observed capability IDs")
+    published = set()
+    candidates = []
+    for row in payload:
+        if not isinstance(row, dict):
+            raise ValueError("Invalid product catalogue entry")
+        cap = row.get("id")
+        if type(cap) is not int or not 0 <= cap <= 2_147_483_647:
+            continue
+        published.add(cap)
+        if row.get("isSensitiveData") is not False:
+            continue
+        fields = [row.get(k) for k in ("name", "description")]
+        hint = " ".join(x.casefold() for x in fields
+                        if isinstance(x, str) and len(x) <= 1024)
+        category = None
+        if any(x in hint for x in ("defrost", "defrosti", "deicing", "degivr", "dégivr")):
+            category = "możliwy_defrost"
+        elif (any(x in hint for x in ("heat", "thermal", "calori"))
+              and any(x in hint for x in ("produc", "deliver", "output"))
+              and not any(x in hint for x in ("electric", "powerinput", "consum"))):
+            category = "możliwa_energia_cieplna"
+        if category and cap not in PRODUCT_FOCUS_IDS and len(candidates) < MAX_PRODUCT_CANDIDATES:
+            candidates.append({"capability_id": cap, "kategoria": category})
+
+    observed = {x for x in reported_ids if type(x) is int and x in PRODUCT_FOCUS_IDS}
+    details = {
+        group: {
+            "w_katalogu": sorted(published.intersection(ids)),
+            "zgloszone_przez_urzadzenie": sorted(observed.intersection(ids)),
+            "w_katalogu_ale_brak_w_odczycie": sorted((published - observed).intersection(ids)),
+        }
+        for group, ids in PRODUCT_FOCUS.items()
+    }
+    return {
+        "state": "katalog_produktu_odczytany",
+        "product_id": product_id,  # Product type, not user's serial/device ID.
+        "model_id": model_id if type(model_id) is int and 1 <= model_id <= 2_147_483_647 else None,
+        "rola": role,
+        "liczba_definicji_w_katalogu": len(published),
+        "porownanie": details,
+        "odczyty_bez_deklaracji_w_katalogu": sorted(observed - published),
+        "nieznane_kandydaty": candidates,
+        "katalog_to_nie_telemetria": True,
+        "bezposredni_defrost_potwierdzony": False,
+        "wyprodukowana_energia_cieplna_potwierdzona": False,
+    }
+
+
 UNITS = frozenset(("kWh", "Wh", "kW", "W", "°C", "l/min", "L/min", "s", "h", "%"))
 MAX_BODY_BYTES = 1_000_000
 MAX_ERROR_BYTES = 16_384
@@ -190,6 +276,7 @@ class Probe:
     target_id: str | None = None
     setup_id: int | None = None
     gateway_id: str | None = None
+    product_id: int | None = None
 
 
 def build_plan(devices, setup_id, _extra_ids, _now, gateway_id: str | None = None):
@@ -227,6 +314,21 @@ def build_plan(devices, setup_id, _extra_ids, _now, gateway_id: str | None = Non
             + urlencode({"periodicity": "daily"}),
             gateway_id=gateway_id,
         ))
+    # One metadata-only GET per DISTINCT product belonging to a unique pump
+    # interface / generator. Never guess product IDs or fan out across accounts.
+    queried_products: set[int] = set()
+    for role, device_id in selected:
+        device = next((d for d in devices if d.get("id") == device_id), None)
+        product_id = device.get("product_id") if isinstance(device, dict) else None
+        if type(product_id) is not int or product_id in queried_products:
+            continue
+        try:
+            url = product_catalogue_url(product_id)
+        except ValueError:
+            continue
+        queried_products.add(product_id)
+        plan.append(Probe("product_capabilities_" + role, url,
+                          target_id=device_id, product_id=product_id))
     return plan
 
 
