@@ -38,6 +38,27 @@ class TestReadings(unittest.TestCase):
         self.assertEqual(data[0]["values"], {24: 21.0, 51: True, 119: 5.5})
         self.assertNotIn(123456789, data[0]["values"])
 
+    def test_safe_product_model_ids_from_owned_setup_only(self):
+        payload = [{"devices": [
+            {"deviceId": 9, "productId": "2", "modelId": 35,
+             "capabilities": [{"capabilityId": 91, "value": "1"}]},
+            {"deviceId": 10, "productId": "2&test=1", "modelId": True,
+             "capabilities": [{"capabilityId": 112, "value": 12}]},
+            {"deviceId": 11, "productId": 0, "modelId": "00035",
+             "capabilities": [{"capabilityId": 109, "value": 35}]},
+            {"deviceId": 12, "productId": 500, "modelId": 76,
+             "capabilities": [{"capabilityId": 116, "value": 25}]},
+        ]}]
+        devices = module.extract_devices(payload)
+        self.assertEqual((devices[0]["product_id"], devices[0]["model_id"]), (2, 35))
+        self.assertEqual((devices[1]["product_id"], devices[1]["model_id"]), (None, None))
+        self.assertEqual((devices[2]["product_id"], devices[2]["model_id"]), (None, None))
+        self.assertEqual((devices[3]["product_id"], devices[3]["model_id"]), (500, 76))
+        for raw in (None, True, False, 2.0, -1, 0, "0", "01", "1/../../",
+                    "9999999999999999999999", "2147483648"):
+            self.assertIsNone(module.catalogue_numeric_id(raw))
+        self.assertEqual(module.catalogue_numeric_id("2147483647"), 2147483647)
+
     def test_inactive_temperature_sentinel_and_normal_values(self):
         for cap in (109, 110, 111, 117, 118, 119):
             for invalid in (-273.15, "-273,2", -327.68):
