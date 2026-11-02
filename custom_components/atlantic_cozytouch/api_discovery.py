@@ -89,16 +89,63 @@ def targets(devices):
     return result
 
 
+
+# Published global catalogue metadata does NOT prove that a specific heat pump
+# reports these values. ID 50 is generator modulation, not compressor modulation.
+COMPRESSOR_CATALOGUE_ROLES = {
+    24: "liczba_startow_sprezarki",
+    27: "czas_pracy_sprezarki",
+    51: "stan_sprezarki",
+    72: "modulacja_sprezarki",
+}
+MAX_COMPRESSOR_CATALOGUE_ROWS = 24
+
+
+def compressor_catalogue_candidate(item: dict) -> dict | None:
+    """Anonymized, presence-only metadata from the existing catalogue GET.
+
+    No extra cloud requests, private capability values, arbitrary vendor text
+    or automatic association with a device are permitted.
+    """
+    cap = item.get("id")
+    if (type(cap) is not int or not 0 <= cap <= 2147483647
+            or item.get("isSensitiveData") is not False):
+        return None
+    name = item.get("name")
+    name = name.casefold() if isinstance(name, str) and len(name) <= 2048 else ""
+    role = COMPRESSOR_CATALOGUE_ROLES.get(cap)
+    if cap == 50 and "generator" in name and "modulation" in name:
+        role = "modulacja_generatora_tylko_posrednia"
+    if role is None and any(word in name for word in ("compressor", "compresseur", "verdichter")):
+        # Error / temperature / protection capabilities are not activity sensors.
+        if not any(word in name for word in ("error", "fault", "alarm", "thermist", "protect", "temp")):
+            role = "inne_niezmapowane_pole_sprezarki"
+    if role is None:
+        return None
+    unit = item.get("unit")
+    return {
+        "capability_id": cap,
+        "rola": role,
+        "unit": unit if isinstance(unit, str) and unit in UNITS else None,
+        "tylko_metadane": True,
+        "potwierdzony_odczyt_z_pompy": False,
+    }
+
+
 def catalogue_summary(payload):
     if not isinstance(payload, list) or len(payload) > 2048:
         raise ValueError("catalogue shape")
     rows, extra = [], set()
+    compressor_rows = []
     for item in payload:
         if not isinstance(item, dict):
             raise ValueError("catalogue item")
         cap = item.get("id")
         if type(cap) is not int or not 0 <= cap <= 2147483647:
             continue
+        candidate = compressor_catalogue_candidate(item)
+        if candidate is not None and len(compressor_rows) < MAX_COMPRESSOR_CATALOGUE_ROWS:
+            compressor_rows.append(candidate)
         # Classify metadata locally; never export free text from the catalogue.
         parts = [item.get(key) for key in ("name", "description")]
         name = " ".join(part.lower() for part in parts
@@ -125,7 +172,12 @@ def catalogue_summary(payload):
                          "thermal_name_candidate": thermal,
                          "defrost_name_candidate": defrost})
     return {"state": "katalog_odczytany", "rows": rows,
-            "candidate_ids": sorted(extra), "raw_scale_confirmed": False}, extra
+            "candidate_ids": sorted(extra), "raw_scale_confirmed": False,
+            "katalog_sprezarki": {
+                "state": "globalny_katalog_bez_potwierdzenia_telemetrii",
+                "rows": compressor_rows,
+                "lista_ograniczona": len(compressor_rows) >= MAX_COMPRESSOR_CATALOGUE_ROWS,
+            }}, extra
 
 
 @dataclass(frozen=True)
