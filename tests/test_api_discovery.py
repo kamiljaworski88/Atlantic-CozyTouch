@@ -288,6 +288,42 @@ class DiscoveryParsing(unittest.TestCase):
             self.assertNotIn(sensitive, json.dumps(result))
         self.assertFalse(result["cop_ready"])
 
+    def test_compressor_catalogue_is_metadata_only_and_never_device_proof(self):
+        payload = [
+            {"id": 24, "name": "StartCounterCompressor", "isSensitiveData": False},
+            {"id": 27, "name": "HoursRunCompressor", "unit": "s", "isSensitiveData": False},
+            {"id": 51, "name": "CompressorState", "isSensitiveData": False},
+            {"id": 72, "name": "CompressorModulation", "unit": "%", "isSensitiveData": False},
+            {"id": 50, "name": "GENERATOR_ModulationLevel", "unit": "%", "isSensitiveData": False},
+            {"id": 778, "name": "CompressorSample", "description": "SECRET_SERIAL", "isSensitiveData": False},
+            {"id": 779, "name": "CompressorSensitive", "isSensitiveData": True},
+            {"id": 780, "name": "CompressorUnknownPrivacy"},
+            {"id": 781, "name": "CompressorTemperatureAlarm", "isSensitiveData": False},
+            {"id": 180, "name": "ErrorCodeUE", "description": "Compressor thermistor fault",
+             "isSensitiveData": False},
+        ]
+        report, extra = d.catalogue_summary(payload)
+        rows = report["katalog_sprezarki"]["rows"]
+        by_id = {row["capability_id"]: row for row in rows}
+        self.assertEqual(set(by_id), {24, 27, 50, 51, 72, 778})
+        self.assertEqual(by_id[50]["rola"], "modulacja_generatora_tylko_posrednia")
+        self.assertEqual(by_id[72]["rola"], "modulacja_sprezarki")
+        self.assertEqual(by_id[27]["unit"], "s")
+        self.assertTrue(all(row["tylko_metadane"]
+                            and not row["potwierdzony_odczyt_z_pompy"] for row in rows))
+        self.assertEqual(extra, set())
+        self.assertNotIn("SECRET_SERIAL", json.dumps(report))
+        self.assertEqual(report["katalog_sprezarki"]["state"],
+                         "globalny_katalog_bez_potwierdzenia_telemetrii")
+
+    def test_compressor_catalogue_audit_is_bounded(self):
+        payload = [{"id": i + 1000, "name": "CompressorOther",
+                    "isSensitiveData": False} for i in range(100)]
+        report, ids = d.catalogue_summary(payload)
+        self.assertEqual(len(report["katalog_sprezarki"]["rows"]), 24)
+        self.assertTrue(report["katalog_sprezarki"]["lista_ograniczona"])
+        self.assertEqual(ids, set())
+
     def test_catalogue_sensitivity_and_unknown_values(self):
         summary, extra = d.catalogue_summary([
             {"id":999,"name":"HeatProduced","isSensitiveData":False,"unit":"kWh"},
